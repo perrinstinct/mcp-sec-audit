@@ -1,0 +1,14 @@
+target/
+*.class
+
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+.vscode/
+
+.DS_Store
+
+*.log
