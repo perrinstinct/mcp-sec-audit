@@ -83,4 +83,26 @@ class McpToolScannerTest {
 
         assertTrue(toolMethods.isEmpty());
     }
+
+    @Test
+    void skipsUnparseableFilesInsteadOfFailingTheWholeScan(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Broken.java"), "this is not valid java {{{ @@@");
+
+        Files.writeString(tempDir.resolve("Valid.java"), """
+                package com.example;
+
+                public class Valid {
+
+                    @Tool
+                    public void doSomething() {
+                    }
+                }
+                """);
+
+        McpToolScanner scanner = new McpToolScanner();
+        List<ToolMethod> toolMethods = scanner.scan(tempDir);
+
+        assertEquals(1, toolMethods.size());
+        assertEquals("doSomething", toolMethods.get(0).methodName());
+    }
 }

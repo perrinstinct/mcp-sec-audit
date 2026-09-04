@@ -1,12 +1,13 @@
 package com.mcpsecaudit.scanner;
 
-import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -17,6 +18,10 @@ import java.util.stream.Stream;
 public class McpToolScanner {
 
     private static final Set<String> TOOL_ANNOTATIONS = Set.of("McpTool", "Tool");
+
+    private final JavaParser javaParser = new JavaParser(
+            new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21)
+    );
 
     public List<ToolMethod> scan(Path rootDirectory) throws IOException {
         try (Stream<Path> paths = Files.walk(rootDirectory)) {
@@ -29,13 +34,20 @@ public class McpToolScanner {
     }
 
     private List<ToolMethod> findToolMethods(Path rootDirectory, Path javaFile) {
-        CompilationUnit compilationUnit;
+        ParseResult<CompilationUnit> result;
         try {
-            compilationUnit = StaticJavaParser.parse(javaFile);
+            result = javaParser.parse(javaFile);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to parse " + javaFile, e);
+            System.err.println("Skipping " + javaFile + ": " + e.getMessage());
+            return List.of();
         }
 
+        if (!result.isSuccessful() || result.getResult().isEmpty()) {
+            System.err.println("Skipping " + javaFile + ": " + result.getProblems());
+            return List.of();
+        }
+
+        CompilationUnit compilationUnit = result.getResult().get();
         String relativePath = rootDirectory.relativize(javaFile).toString();
 
         return compilationUnit.findAll(MethodDeclaration.class).stream()
