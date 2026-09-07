@@ -21,7 +21,11 @@ public class Auditor {
     private final List<SecurityRule> rules;
 
     public Auditor() {
-        this(new McpToolScanner(), List.of(
+        this(false);
+    }
+
+    public Auditor(boolean includeTestSources) {
+        this(new McpToolScanner(includeTestSources), List.of(
                 new ProcExecRule(), new FsAccessRule(), new NetAccessRule(), new MissingAuthRule()
         ));
     }

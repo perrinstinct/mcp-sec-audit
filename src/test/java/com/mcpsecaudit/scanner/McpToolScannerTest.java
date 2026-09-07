@@ -105,4 +105,54 @@ class McpToolScannerTest {
         assertEquals(1, toolMethods.size());
         assertEquals("doSomething", toolMethods.get(0).methodName());
     }
+
+    @Test
+    void skipsTestSourcesAndBuildOutputByDefault(@TempDir Path tempDir) throws IOException {
+        String toolSource = """
+                package com.example;
+
+                public class SomeTool {
+
+                    @Tool
+                    public void doSomething() {
+                    }
+                }
+                """;
+
+        writeJava(tempDir.resolve("src/main/java/com/example/SomeTool.java"), toolSource);
+        writeJava(tempDir.resolve("src/test/java/com/example/SomeToolTest.java"), toolSource);
+        writeJava(tempDir.resolve("target/generated-sources/com/example/Generated.java"), toolSource);
+        writeJava(tempDir.resolve("build/generated/com/example/Generated.java"), toolSource);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
+
+        assertEquals(1, toolMethods.size());
+        assertTrue(toolMethods.get(0).filePath().contains("src/main/java"));
+    }
+
+    @Test
+    void includesTestSourcesWhenAskedTo(@TempDir Path tempDir) throws IOException {
+        String toolSource = """
+                package com.example;
+
+                public class SomeTool {
+
+                    @Tool
+                    public void doSomething() {
+                    }
+                }
+                """;
+
+        writeJava(tempDir.resolve("src/main/java/com/example/SomeTool.java"), toolSource);
+        writeJava(tempDir.resolve("src/test/java/com/example/SomeToolTest.java"), toolSource);
+
+        List<ToolMethod> toolMethods = new McpToolScanner(true).scan(tempDir);
+
+        assertEquals(2, toolMethods.size());
+    }
+
+    private void writeJava(Path file, String content) throws IOException {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, content);
+    }
 }

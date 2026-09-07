@@ -29,9 +29,12 @@ public class ScanCommand implements Callable<Integer> {
     @Option(names = "--fail-on-critical", description = "Exit with status 1 if any CRITICAL finding is found")
     private boolean failOnCritical;
 
+    @Option(names = "--include-tests", description = "Also scan sources under src/test (skipped by default)")
+    private boolean includeTests;
+
     @Override
     public Integer call() throws Exception {
-        ScanReport report = new Auditor().audit(path);
+        ScanReport report = new Auditor(includeTests).audit(path);
 
         System.out.println(new ConsoleReporter().format(report));
 

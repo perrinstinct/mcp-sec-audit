@@ -19,18 +19,45 @@ public class McpToolScanner {
 
     private static final Set<String> TOOL_ANNOTATIONS = Set.of("McpTool", "Tool");
 
+    private static final Set<String> EXCLUDED_DIRECTORIES = Set.of("target", "build", "out", ".git");
+
     private final JavaParser javaParser = new JavaParser(
             new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21)
     );
+
+    private final boolean includeTestSources;
+
+    public McpToolScanner() {
+        this(false);
+    }
+
+    public McpToolScanner(boolean includeTestSources) {
+        this.includeTestSources = includeTestSources;
+    }
 
     public List<ToolMethod> scan(Path rootDirectory) throws IOException {
         try (Stream<Path> paths = Files.walk(rootDirectory)) {
             return paths
                     .filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> isScannable(rootDirectory.relativize(path)))
                     .flatMap(javaFile -> findToolMethods(rootDirectory, javaFile).stream())
                     .collect(Collectors.toList());
         }
+    }
+
+    private boolean isScannable(Path relativePath) {
+        for (Path segment : relativePath) {
+            if (EXCLUDED_DIRECTORIES.contains(segment.toString())) {
+                return false;
+            }
+        }
+        return includeTestSources || !isTestSource(relativePath);
+    }
+
+    private boolean isTestSource(Path relativePath) {
+        String normalized = relativePath.toString().replace('\\', '/');
+        return normalized.contains("src/test/");
     }
 
     private List<ToolMethod> findToolMethods(Path rootDirectory, Path javaFile) {
