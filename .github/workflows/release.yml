@@ -36,6 +36,11 @@ jobs:
       - name: Build native image
         run: mvn -B -Pnative -DskipTests package
 
+      # A native binary can build cleanly and still die on a code path whose
+      # reflection metadata is missing, so exercise it on real sources first.
+      - name: Smoke test the binary
+        run: ./target/mcp-sec-audit src --include-tests
+
       - name: Name the binary after its platform
         run: mv target/mcp-sec-audit ${{ matrix.asset }}
 
