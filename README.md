@@ -1,5 +1,8 @@
 # mcp-sec-audit
 
+[![CI](https://github.com/perrinstinct/mcp-sec-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/perrinstinct/mcp-sec-audit/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Static analysis for Spring AI MCP servers. It finds `@Tool` methods that expose risky
 capabilities — shelling out, reading the filesystem, calling the network — and tells you
 which of them are reachable without any authorization.
