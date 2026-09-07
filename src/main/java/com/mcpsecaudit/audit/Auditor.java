@@ -8,6 +8,8 @@ import com.mcpsecaudit.rules.NetAccessRule;
 import com.mcpsecaudit.rules.ProcExecRule;
 import com.mcpsecaudit.rules.SecurityRule;
 import com.mcpsecaudit.scanner.McpToolScanner;
+import com.mcpsecaudit.scanner.ProjectContext;
+import com.mcpsecaudit.scanner.ProjectContextDetector;
 import com.mcpsecaudit.scanner.ToolMethod;
 
 import java.io.IOException;
@@ -19,6 +21,7 @@ public class Auditor {
 
     private final McpToolScanner scanner;
     private final List<SecurityRule> rules;
+    private final ProjectContextDetector contextDetector = new ProjectContextDetector();
 
     public Auditor() {
         this(false);
@@ -37,11 +40,12 @@ public class Auditor {
 
     public ScanReport audit(Path rootDirectory) throws IOException {
         List<ToolMethod> toolMethods = scanner.scan(rootDirectory);
+        ProjectContext project = contextDetector.detect(rootDirectory);
 
         List<Finding> findings = toolMethods.stream()
                 .flatMap(toolMethod -> rules.stream()
                         .filter(rule -> !Suppressions.suppresses(toolMethod, rule.ruleId()))
-                        .flatMap(rule -> rule.evaluate(toolMethod).stream()))
+                        .flatMap(rule -> rule.evaluate(toolMethod, project).stream()))
                 .toList();
 
         return new ScanReport(rootDirectory.toString(), Instant.now(), findings);

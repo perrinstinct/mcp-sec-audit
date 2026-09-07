@@ -3,6 +3,7 @@ package com.mcpsecaudit.rules;
 import com.mcpsecaudit.model.Finding;
 import com.mcpsecaudit.model.Severity;
 import com.mcpsecaudit.scanner.McpToolScanner;
+import com.mcpsecaudit.scanner.ProjectContext;
 import com.mcpsecaudit.scanner.ToolMethod;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,7 +51,7 @@ class NetAccessRuleTest {
         SecurityRule rule = new NetAccessRule();
 
         List<Finding> findings = toolMethods.stream()
-                .flatMap(toolMethod -> rule.evaluate(toolMethod).stream())
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
                 .toList();
 
         assertEquals(3, findings.size());
@@ -108,7 +109,7 @@ class NetAccessRuleTest {
         SecurityRule rule = new NetAccessRule();
 
         List<Finding> findings = toolMethods.stream()
-                .flatMap(toolMethod -> rule.evaluate(toolMethod).stream())
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
                 .toList();
 
         assertEquals(1, findings.stream()

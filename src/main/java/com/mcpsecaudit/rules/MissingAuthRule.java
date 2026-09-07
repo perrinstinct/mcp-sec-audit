@@ -6,6 +6,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.mcpsecaudit.model.Finding;
 import com.mcpsecaudit.model.Severity;
+import com.mcpsecaudit.scanner.ProjectContext;
 import com.mcpsecaudit.scanner.ToolMethod;
 
 import java.util.List;
@@ -23,19 +24,28 @@ public class MissingAuthRule implements SecurityRule {
     }
 
     @Override
-    public List<Finding> evaluate(ToolMethod toolMethod) {
+    public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
         if (hasAuthAnnotation(toolMethod)) {
             return List.of();
         }
         return List.of(new Finding(
                 RULE_ID,
-                Severity.HIGH,
-                "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed on itself or its class",
+                project.httpExposureDetected() ? Severity.HIGH : Severity.LOW,
+                message(project),
                 toolMethod.filePath(),
                 toolMethod.line(),
                 toolMethod.className(),
                 toolMethod.methodName()
         ));
+    }
+
+    private String message(ProjectContext project) {
+        if (project.httpExposureDetected()) {
+            return "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed, and the project is"
+                    + " reachable over HTTP (" + project.evidence() + ")";
+        }
+        return "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed (lowered to LOW: "
+                + project.evidence() + ", so the server is most likely a local stdio process)";
     }
 
     private boolean hasAuthAnnotation(ToolMethod toolMethod) {

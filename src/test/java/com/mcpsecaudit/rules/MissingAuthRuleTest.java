@@ -3,6 +3,7 @@ package com.mcpsecaudit.rules;
 import com.mcpsecaudit.model.Finding;
 import com.mcpsecaudit.model.Severity;
 import com.mcpsecaudit.scanner.McpToolScanner;
+import com.mcpsecaudit.scanner.ProjectContext;
 import com.mcpsecaudit.scanner.ToolMethod;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,22 +48,60 @@ class MissingAuthRuleTest {
                 }
                 """);
 
-        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
-        SecurityRule rule = new MissingAuthRule();
-
-        List<Finding> findings = toolMethods.stream()
-                .flatMap(toolMethod -> rule.evaluate(toolMethod).stream())
-                .toList();
+        List<Finding> findings = evaluate(tempDir, ProjectContext.httpExposure("test"));
 
         assertEquals(1, findings.size());
-        Finding finding = findings.get(0);
-        assertEquals("MISSING_AUTH", finding.ruleId());
-        assertEquals(Severity.HIGH, finding.severity());
-        assertEquals("unprotectedMethod", finding.methodName());
+        assertEquals("MISSING_AUTH", findings.get(0).ruleId());
+        assertEquals("unprotectedMethod", findings.get(0).methodName());
+    }
+
+    @Test
+    void reportsHighWhenTheProjectIsReachableOverHttp(@TempDir Path tempDir) throws IOException {
+        writeUnprotectedTool(tempDir);
+
+        List<Finding> findings = evaluate(tempDir,
+                ProjectContext.httpExposure("spring-boot-starter-web dependency in pom.xml"));
+
+        assertEquals(1, findings.size());
+        assertEquals(Severity.HIGH, findings.get(0).severity());
+        assertTrue(findings.get(0).message().contains("spring-boot-starter-web"));
+    }
+
+    @Test
+    void lowersToLowWhenNoHttpExposureIsDetected(@TempDir Path tempDir) throws IOException {
+        writeUnprotectedTool(tempDir);
+
+        List<Finding> findings = evaluate(tempDir, ProjectContext.noHttpExposure());
+
+        assertEquals(1, findings.size());
+        assertEquals(Severity.LOW, findings.get(0).severity());
+        assertTrue(findings.get(0).message().contains("stdio"));
     }
 
     @Test
     void ruleIdIsMissingAuth() {
         assertEquals("MISSING_AUTH", new MissingAuthRule().ruleId());
+    }
+
+    private void writeUnprotectedTool(Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("UnprotectedTool.java"), """
+                package com.example;
+
+                public class UnprotectedTool {
+
+                    @Tool
+                    public void unprotectedMethod() {
+                    }
+                }
+                """);
+    }
+
+    private List<Finding> evaluate(Path tempDir, ProjectContext project) throws IOException {
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
+        SecurityRule rule = new MissingAuthRule();
+
+        return toolMethods.stream()
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, project).stream())
+                .toList();
     }
 }

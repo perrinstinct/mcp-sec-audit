@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 public class ConsoleReporter {
 
-    private static final List<Severity> SEVERITY_ORDER = List.of(Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM);
+    private static final List<Severity> SEVERITY_ORDER = List.of(Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW);
 
     public String format(ScanReport report) {
         StringBuilder output = new StringBuilder();

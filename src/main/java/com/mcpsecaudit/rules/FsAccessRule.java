@@ -5,6 +5,7 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.mcpsecaudit.model.Finding;
 import com.mcpsecaudit.model.Severity;
+import com.mcpsecaudit.scanner.ProjectContext;
 import com.mcpsecaudit.scanner.ToolMethod;
 
 import java.util.ArrayList;
@@ -27,7 +28,7 @@ public class FsAccessRule implements SecurityRule {
     }
 
     @Override
-    public List<Finding> evaluate(ToolMethod toolMethod) {
+    public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
         List<Finding> findings = new ArrayList<>();
         findings.addAll(findFileInstantiations(toolMethod));
         findings.addAll(findFileUtilityCalls(toolMethod));
