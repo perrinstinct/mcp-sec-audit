@@ -39,7 +39,9 @@ public class Auditor {
         List<ToolMethod> toolMethods = scanner.scan(rootDirectory);
 
         List<Finding> findings = toolMethods.stream()
-                .flatMap(toolMethod -> rules.stream().flatMap(rule -> rule.evaluate(toolMethod).stream()))
+                .flatMap(toolMethod -> rules.stream()
+                        .filter(rule -> !Suppressions.suppresses(toolMethod, rule.ruleId()))
+                        .flatMap(rule -> rule.evaluate(toolMethod).stream()))
                 .toList();
 
         return new ScanReport(rootDirectory.toString(), Instant.now(), findings);

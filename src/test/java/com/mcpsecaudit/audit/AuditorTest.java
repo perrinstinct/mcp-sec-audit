@@ -55,4 +55,71 @@ class AuditorTest {
 
         assertTrue(report.findings().isEmpty());
     }
+
+    @Test
+    void ignoresEveryRuleOnAMethodMarkedWithABareIgnoreComment(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("RiskyTool.java"), """
+                package com.example;
+
+                public class RiskyTool {
+
+                    // mcp-sec-audit:ignore
+                    @Tool
+                    public void suppressed(String command) throws Exception {
+                        Runtime.getRuntime().exec(command);
+                    }
+
+                    @Tool
+                    public void notSuppressed(String command) throws Exception {
+                        Runtime.getRuntime().exec(command);
+                    }
+                }
+                """);
+
+        ScanReport report = new Auditor().audit(tempDir);
+
+        assertTrue(report.findings().stream().noneMatch(f -> f.methodName().equals("suppressed")));
+        assertTrue(report.findings().stream().anyMatch(f -> f.methodName().equals("notSuppressed")));
+    }
+
+    @Test
+    void ignoresOnlyTheNamedRulesWhenTheCommentListsThem(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("RiskyTool.java"), """
+                package com.example;
+
+                public class RiskyTool {
+
+                    // mcp-sec-audit:ignore PROC_EXEC
+                    @Tool
+                    public void partlySuppressed(String command) throws Exception {
+                        Runtime.getRuntime().exec(command);
+                    }
+                }
+                """);
+
+        ScanReport report = new Auditor().audit(tempDir);
+
+        assertTrue(report.findings().stream().noneMatch(f -> f.ruleId().equals("PROC_EXEC")));
+        assertTrue(report.findings().stream().anyMatch(f -> f.ruleId().equals("MISSING_AUTH")));
+    }
+
+    @Test
+    void acceptsAnIgnoreCommentInsideTheMethodBody(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("RiskyTool.java"), """
+                package com.example;
+
+                public class RiskyTool {
+
+                    @Tool
+                    public void suppressedInline(String command) throws Exception {
+                        // mcp-sec-audit:ignore PROC_EXEC - command is a fixed allowlisted binary
+                        Runtime.getRuntime().exec(command);
+                    }
+                }
+                """);
+
+        ScanReport report = new Auditor().audit(tempDir);
+
+        assertTrue(report.findings().stream().noneMatch(f -> f.ruleId().equals("PROC_EXEC")));
+    }
 }
