@@ -15,7 +15,7 @@ import java.util.concurrent.Callable;
 @Command(
         name = McpSecAudit.NAME,
         mixinStandardHelpOptions = true,
-        version = "mcp-sec-audit 0.1.0",
+        versionProvider = VersionProvider.class,
         description = "Scans Spring Boot / Spring AI source code for MCP tool methods exposed without protection."
 )
 public class ScanCommand implements Callable<Integer> {
