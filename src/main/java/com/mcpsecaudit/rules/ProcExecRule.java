@@ -10,6 +10,7 @@ import com.mcpsecaudit.scanner.ToolMethod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class ProcExecRule implements SecurityRule {
 
@@ -22,33 +23,38 @@ public class ProcExecRule implements SecurityRule {
 
     @Override
     public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
+        ParameterTaint taint = ParameterTaint.of(toolMethod.methodDeclaration());
         List<Finding> findings = new ArrayList<>();
-        findings.addAll(findRuntimeExecCalls(toolMethod));
-        findings.addAll(findProcessBuilderInstantiations(toolMethod));
+        findings.addAll(findRuntimeExecCalls(toolMethod, taint));
+        findings.addAll(findProcessBuilderInstantiations(toolMethod, taint));
         return findings;
     }
 
-    private List<Finding> findRuntimeExecCalls(ToolMethod toolMethod) {
+    private List<Finding> findRuntimeExecCalls(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .filter(call -> call.getNameAsString().equals("exec"))
                 .filter(call -> call.getScope().map(Node::toString).orElse("").contains("Runtime"))
-                .map(call -> toFinding(toolMethod, call, "Runtime.exec() call allows arbitrary OS command execution"))
+                .map(call -> toFinding(toolMethod, taint, call, "Runtime.exec()"))
                 .toList();
     }
 
-    private List<Finding> findProcessBuilderInstantiations(ToolMethod toolMethod) {
+    private List<Finding> findProcessBuilderInstantiations(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(ObjectCreationExpr.class).stream()
                 .filter(expr -> expr.getType().getNameAsString().equals("ProcessBuilder"))
-                .map(expr -> toFinding(toolMethod, expr, "ProcessBuilder instantiation allows arbitrary OS command execution"))
+                .map(expr -> toFinding(toolMethod, taint, expr, "ProcessBuilder"))
                 .toList();
     }
 
-    private Finding toFinding(ToolMethod toolMethod, Node node, String message) {
+    private Finding toFinding(ToolMethod toolMethod, ParameterTaint taint, Node node, String sink) {
         int line = node.getBegin().map(position -> position.line).orElse(toolMethod.line());
+        Optional<String> taintedParameter = taint.nameReaching(node);
         return new Finding(
                 RULE_ID,
-                Severity.CRITICAL,
-                message,
+                taintedParameter.isPresent() ? Severity.CRITICAL : Severity.HIGH,
+                taintedParameter
+                        .map(parameter -> sink + " runs a command built from tool parameter '" + parameter
+                                + "' - the model chooses what is executed")
+                        .orElse(sink + " executes a command, but no tool parameter reaches it"),
                 toolMethod.filePath(),
                 line,
                 toolMethod.className(),

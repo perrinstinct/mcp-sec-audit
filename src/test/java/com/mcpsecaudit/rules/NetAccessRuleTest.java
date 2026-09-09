@@ -56,7 +56,9 @@ class NetAccessRuleTest {
 
         assertEquals(3, findings.size());
         assertTrue(findings.stream().allMatch(f -> f.ruleId().equals("NET_ACCESS")));
-        assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.MEDIUM));
+        // connectSocket/connectUrl are fed by parameters; connectHttpClient takes none
+        assertEquals(2, findings.stream().filter(f -> f.severity() == Severity.HIGH).count());
+        assertEquals(1, findings.stream().filter(f -> f.severity() == Severity.MEDIUM).count());
         assertEquals(1, findings.stream().filter(f -> f.methodName().equals("connectSocket")).count());
         assertEquals(1, findings.stream().filter(f -> f.methodName().equals("connectUrl")).count());
         assertEquals(1, findings.stream().filter(f -> f.methodName().equals("connectHttpClient")).count());

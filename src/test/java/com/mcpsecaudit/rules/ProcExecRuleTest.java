@@ -61,4 +61,35 @@ class ProcExecRuleTest {
     void ruleIdIsProcExec() {
         assertEquals("PROC_EXEC", new ProcExecRule().ruleId());
     }
+
+    @Test
+    void onlyRatesExecCriticalWhenTheModelControlsTheCommand(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Exec.java"), """
+                package com.example;
+
+                public class Exec {
+
+                    @Tool
+                    public void runWhatever(String cmd) throws Exception {
+                        Runtime.getRuntime().exec(cmd);
+                    }
+
+                    @Tool
+                    public void runBackup() throws Exception {
+                        Runtime.getRuntime().exec("/usr/local/bin/backup");
+                    }
+                }
+                """);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
+        SecurityRule rule = new ProcExecRule();
+        List<Finding> findings = toolMethods.stream()
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
+                .toList();
+
+        assertTrue(findings.stream().anyMatch(
+                f -> f.methodName().equals("runWhatever") && f.severity() == Severity.CRITICAL));
+        assertTrue(findings.stream().anyMatch(
+                f -> f.methodName().equals("runBackup") && f.severity() == Severity.HIGH));
+    }
 }

@@ -76,12 +76,32 @@ A file named explicitly is always scanned, even under `src/test`.
 
 ## Rules
 
-| Rule | Severity | What it flags |
-| --- | --- | --- |
-| `PROC_EXEC` | CRITICAL | `Runtime.getRuntime().exec(...)`, `new ProcessBuilder(...)` |
-| `MISSING_AUTH` | HIGH / LOW | No `@PreAuthorize`, `@Secured` or `@RolesAllowed` on the method or its class |
-| `FS_ACCESS` | MEDIUM | `new File(...)` and friends, `Files.*`, `Paths.*` |
-| `NET_ACCESS` | MEDIUM | `Socket`, `URL`, `HttpClient`, and Spring's `RestClient` / `RestTemplate` / `WebClient` — including clients injected as fields |
+| Rule | Model-controlled | Hardcoded | What it flags |
+| --- | --- | --- | --- |
+| `PROC_EXEC` | CRITICAL | HIGH | `Runtime.getRuntime().exec(...)`, `new ProcessBuilder(...)` |
+| `FS_ACCESS` | HIGH | MEDIUM | `new File(...)` and friends, `Files.*`, `Paths.*` |
+| `NET_ACCESS` | HIGH | MEDIUM | `Socket`, `URL`, `HttpClient`, and Spring's `RestClient` / `RestTemplate` / `WebClient` — including clients injected as fields |
+| `MISSING_AUTH` | HIGH / LOW | — | No `@PreAuthorize`, `@Secured` or `@RolesAllowed` on the method or its class |
+
+### Severity follows exploitability
+
+A tool method's parameters are filled by the model, and the model can be steered by
+anything in its context — a web page, an email, a document. They are as untrusted as an
+HTTP request parameter. So the scanner asks whether one of them actually **reaches** the
+risky call, propagating through local variables:
+
+```java
+@Tool String read(String path) {
+    return Files.readString(Paths.get(path));      // HIGH  - the model picks the file
+}
+
+@Tool String changelog() {
+    return Files.readString(Paths.get("/opt/CHANGELOG.md"));   // MEDIUM - hardcoded
+}
+```
+
+Both touch the filesystem; only the first is an arbitrary file read. The finding names the
+parameter responsible, even when it arrives through intermediate variables.
 
 `MISSING_AUTH` is graded on how the server is actually exposed. The scanner reads your build
 files and Spring configuration for evidence of HTTP exposure (a web starter dependency,
@@ -122,8 +142,13 @@ This is syntactic analysis of your sources. Being explicit about the boundaries:
   resolution would fix this at the cost of needing your full classpath.
 - **Deployment detection is a heuristic.** A repository that contains a web starter anywhere
   is treated as HTTP-exposed, even if the MCP server module itself is stdio-only.
-- **It reasons about one method at a time.** A tool that delegates its risky work to a
-  private helper in the same class is not followed.
+- **It reasons about one method at a time.** Taint is tracked inside the tool method only.
+  A tool that delegates its risky work to a private helper is not followed, and neither is
+  a parameter stored in a field and used later.
+- **It does not detect sanitizers.** Code that validates a parameter against an allowlist
+  before using it is still reported. This is deliberate: wrongly assuming a value was
+  validated would hide a real vulnerability, while a false alarm only costs you a
+  `mcp-sec-audit:ignore` comment. Suppress those cases explicitly.
 
 Findings are a starting point for review, not a verdict.
 

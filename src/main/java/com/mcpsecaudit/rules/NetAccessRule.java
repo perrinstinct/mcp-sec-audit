@@ -40,25 +40,26 @@ public class NetAccessRule implements SecurityRule {
 
     @Override
     public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
+        ParameterTaint taint = ParameterTaint.of(toolMethod.methodDeclaration());
         List<Finding> findings = new ArrayList<>();
-        findings.addAll(findNetInstantiations(toolMethod));
-        findings.addAll(findNetUtilityCalls(toolMethod));
-        findings.addAll(findNetClientFieldUsages(toolMethod));
+        findings.addAll(findNetInstantiations(toolMethod, taint));
+        findings.addAll(findNetUtilityCalls(toolMethod, taint));
+        findings.addAll(findNetClientFieldUsages(toolMethod, taint));
         return findings;
     }
 
-    private List<Finding> findNetInstantiations(ToolMethod toolMethod) {
+    private List<Finding> findNetInstantiations(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(ObjectCreationExpr.class).stream()
                 .filter(expr -> NET_TYPES.contains(expr.getType().getNameAsString()))
-                .map(expr -> toFinding(toolMethod, expr,
+                .map(expr -> toFinding(toolMethod, taint, expr,
                         expr.getType().getNameAsString() + " instantiation gives direct network access"))
                 .toList();
     }
 
-    private List<Finding> findNetUtilityCalls(ToolMethod toolMethod) {
+    private List<Finding> findNetUtilityCalls(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .filter(call -> scopeSimpleName(call).filter(NET_UTILITY_CLASSES::contains).isPresent())
-                .map(call -> toFinding(toolMethod, call,
+                .map(call -> toFinding(toolMethod, taint, call,
                         scopeSimpleName(call).orElseThrow() + "." + call.getNameAsString()
                                 + "() gives direct network access"))
                 .toList();
@@ -70,7 +71,7 @@ public class NetAccessRule implements SecurityRule {
      * field, and the @Tool method only ever calls that field, so neither
      * instantiation nor a static factory call ever appears inside the method body.
      */
-    private List<Finding> findNetClientFieldUsages(ToolMethod toolMethod) {
+    private List<Finding> findNetClientFieldUsages(ToolMethod toolMethod, ParameterTaint taint) {
         Map<String, String> netClientFields = toolMethod.methodDeclaration()
                 .findAncestor(ClassOrInterfaceDeclaration.class)
                 .map(this::netClientFieldsByName)
@@ -83,7 +84,7 @@ public class NetAccessRule implements SecurityRule {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .flatMap(call -> call.getScope().stream()
                         .flatMap(scope -> fieldNameReferencedBy(scope, netClientFields.keySet()).stream())
-                        .map(fieldName -> toFinding(toolMethod, call,
+                        .map(fieldName -> toFinding(toolMethod, taint, call,
                                 "Call on field '" + fieldName + "' (" + netClientFields.get(fieldName)
                                         + ") gives network access")))
                 .toList();
@@ -117,12 +118,16 @@ public class NetAccessRule implements SecurityRule {
                 .map(scope -> scope.substring(scope.lastIndexOf('.') + 1));
     }
 
-    private Finding toFinding(ToolMethod toolMethod, Node node, String message) {
+    private Finding toFinding(ToolMethod toolMethod, ParameterTaint taint, Node node, String message) {
         int line = node.getBegin().map(position -> position.line).orElse(toolMethod.line());
+        Optional<String> taintedParameter = taint.nameReaching(node);
         return new Finding(
                 RULE_ID,
-                Severity.MEDIUM,
-                message,
+                taintedParameter.isPresent() ? Severity.HIGH : Severity.MEDIUM,
+                taintedParameter
+                        .map(parameter -> message + ", driven by tool parameter '" + parameter
+                                + "' with no validation in between")
+                        .orElse(message),
                 toolMethod.filePath(),
                 line,
                 toolMethod.className(),

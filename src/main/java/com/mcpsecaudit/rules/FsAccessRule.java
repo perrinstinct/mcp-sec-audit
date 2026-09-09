@@ -10,6 +10,7 @@ import com.mcpsecaudit.scanner.ToolMethod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public class FsAccessRule implements SecurityRule {
@@ -29,24 +30,25 @@ public class FsAccessRule implements SecurityRule {
 
     @Override
     public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
+        ParameterTaint taint = ParameterTaint.of(toolMethod.methodDeclaration());
         List<Finding> findings = new ArrayList<>();
-        findings.addAll(findFileInstantiations(toolMethod));
-        findings.addAll(findFileUtilityCalls(toolMethod));
+        findings.addAll(findFileInstantiations(toolMethod, taint));
+        findings.addAll(findFileUtilityCalls(toolMethod, taint));
         return findings;
     }
 
-    private List<Finding> findFileInstantiations(ToolMethod toolMethod) {
+    private List<Finding> findFileInstantiations(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(ObjectCreationExpr.class).stream()
                 .filter(expr -> FILE_TYPES.contains(expr.getType().getNameAsString()))
-                .map(expr -> toFinding(toolMethod, expr,
+                .map(expr -> toFinding(toolMethod, taint, expr,
                         expr.getType().getNameAsString() + " instantiation gives direct filesystem access"))
                 .toList();
     }
 
-    private List<Finding> findFileUtilityCalls(ToolMethod toolMethod) {
+    private List<Finding> findFileUtilityCalls(ToolMethod toolMethod, ParameterTaint taint) {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .filter(call -> scopeSimpleName(call).filter(FILE_UTILITY_CLASSES::contains).isPresent())
-                .map(call -> toFinding(toolMethod, call,
+                .map(call -> toFinding(toolMethod, taint, call,
                         scopeSimpleName(call).orElseThrow() + "." + call.getNameAsString()
                                 + "() gives direct filesystem access"))
                 .toList();
@@ -58,12 +60,16 @@ public class FsAccessRule implements SecurityRule {
                 .map(scope -> scope.substring(scope.lastIndexOf('.') + 1));
     }
 
-    private Finding toFinding(ToolMethod toolMethod, Node node, String message) {
+    private Finding toFinding(ToolMethod toolMethod, ParameterTaint taint, Node node, String message) {
         int line = node.getBegin().map(position -> position.line).orElse(toolMethod.line());
+        Optional<String> taintedParameter = taint.nameReaching(node);
         return new Finding(
                 RULE_ID,
-                Severity.MEDIUM,
-                message,
+                taintedParameter.isPresent() ? Severity.HIGH : Severity.MEDIUM,
+                taintedParameter
+                        .map(parameter -> message + ", driven by tool parameter '" + parameter
+                                + "' with no validation in between")
+                        .orElse(message),
                 toolMethod.filePath(),
                 line,
                 toolMethod.className(),
