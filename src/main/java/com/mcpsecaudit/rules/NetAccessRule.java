@@ -41,25 +41,28 @@ public class NetAccessRule implements SecurityRule {
     @Override
     public List<Finding> evaluate(ToolMethod toolMethod, ProjectContext project) {
         ParameterTaint taint = ParameterTaint.of(toolMethod.methodDeclaration());
-        List<Finding> findings = new ArrayList<>();
-        findings.addAll(findNetInstantiations(toolMethod, taint));
-        findings.addAll(findNetUtilityCalls(toolMethod, taint));
-        findings.addAll(findNetClientFieldUsages(toolMethod, taint));
-        return findings;
+        List<SinkMatch> matches = new ArrayList<>();
+        matches.addAll(findNetInstantiations(toolMethod));
+        matches.addAll(findNetUtilityCalls(toolMethod));
+        matches.addAll(findNetClientFieldUsages(toolMethod));
+
+        return SinkMatch.outermost(matches).stream()
+                .map(match -> toFinding(toolMethod, taint, match))
+                .toList();
     }
 
-    private List<Finding> findNetInstantiations(ToolMethod toolMethod, ParameterTaint taint) {
+    private List<SinkMatch> findNetInstantiations(ToolMethod toolMethod) {
         return toolMethod.methodDeclaration().findAll(ObjectCreationExpr.class).stream()
                 .filter(expr -> NET_TYPES.contains(expr.getType().getNameAsString()))
-                .map(expr -> toFinding(toolMethod, taint, expr,
+                .map(expr -> new SinkMatch(expr,
                         expr.getType().getNameAsString() + " instantiation gives direct network access"))
                 .toList();
     }
 
-    private List<Finding> findNetUtilityCalls(ToolMethod toolMethod, ParameterTaint taint) {
+    private List<SinkMatch> findNetUtilityCalls(ToolMethod toolMethod) {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .filter(call -> scopeSimpleName(call).filter(NET_UTILITY_CLASSES::contains).isPresent())
-                .map(call -> toFinding(toolMethod, taint, call,
+                .map(call -> new SinkMatch(call,
                         scopeSimpleName(call).orElseThrow() + "." + call.getNameAsString()
                                 + "() gives direct network access"))
                 .toList();
@@ -71,7 +74,7 @@ public class NetAccessRule implements SecurityRule {
      * field, and the @Tool method only ever calls that field, so neither
      * instantiation nor a static factory call ever appears inside the method body.
      */
-    private List<Finding> findNetClientFieldUsages(ToolMethod toolMethod, ParameterTaint taint) {
+    private List<SinkMatch> findNetClientFieldUsages(ToolMethod toolMethod) {
         Map<String, String> netClientFields = toolMethod.methodDeclaration()
                 .findAncestor(ClassOrInterfaceDeclaration.class)
                 .map(this::netClientFieldsByName)
@@ -84,7 +87,7 @@ public class NetAccessRule implements SecurityRule {
         return toolMethod.methodDeclaration().findAll(MethodCallExpr.class).stream()
                 .flatMap(call -> call.getScope().stream()
                         .flatMap(scope -> fieldNameReferencedBy(scope, netClientFields.keySet()).stream())
-                        .map(fieldName -> toFinding(toolMethod, taint, call,
+                        .map(fieldName -> new SinkMatch(call,
                                 "Call on field '" + fieldName + "' (" + netClientFields.get(fieldName)
                                         + ") gives network access")))
                 .toList();
@@ -118,9 +121,10 @@ public class NetAccessRule implements SecurityRule {
                 .map(scope -> scope.substring(scope.lastIndexOf('.') + 1));
     }
 
-    private Finding toFinding(ToolMethod toolMethod, ParameterTaint taint, Node node, String message) {
-        int line = node.getBegin().map(position -> position.line).orElse(toolMethod.line());
-        Optional<String> taintedParameter = taint.nameReaching(node);
+    private Finding toFinding(ToolMethod toolMethod, ParameterTaint taint, SinkMatch match) {
+        int line = match.node().getBegin().map(position -> position.line).orElse(toolMethod.line());
+        Optional<String> taintedParameter = taint.nameReaching(match.node());
+        String message = match.description();
         return new Finding(
                 RULE_ID,
                 taintedParameter.isPresent() ? Severity.HIGH : Severity.MEDIUM,

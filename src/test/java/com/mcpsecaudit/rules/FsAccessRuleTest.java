@@ -49,12 +49,13 @@ class FsAccessRuleTest {
                 .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
                 .toList();
 
-        assertEquals(3, findings.size());
+        assertEquals(2, findings.size());
         assertTrue(findings.stream().allMatch(f -> f.ruleId().equals("FS_ACCESS")));
         // every sink here is fed by a tool parameter, so all of them are tainted
         assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.HIGH));
         assertEquals(1, findings.stream().filter(f -> f.methodName().equals("readViaFile")).count());
-        assertEquals(2, findings.stream().filter(f -> f.methodName().equals("readViaFilesUtility")).count());
+        // Files.readAllBytes(Paths.get(path)) is one operation, reported at the outer call
+        assertEquals(1, findings.stream().filter(f -> f.methodName().equals("readViaFilesUtility")).count());
         assertTrue(findings.stream().noneMatch(f -> f.methodName().equals("safeEcho")));
     }
 
@@ -108,5 +109,61 @@ class FsAccessRuleTest {
                         .filter(f -> f.methodName().equals("readVia"))
                         .anyMatch(f -> f.severity() == Severity.HIGH && f.message().contains("name")),
                 "taint must propagate through local assignments: " + findings);
+    }
+
+    @Test
+    void reportsNestedSinksOnceAtTheOutermostCall(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Nested.java"), """
+                package com.example;
+
+                public class Nested {
+
+                    @Tool
+                    public String read(String path) throws Exception {
+                        if (Files.exists(Paths.get(path))) {
+                            return Files.readString(Paths.get(path));
+                        }
+                        return "";
+                    }
+                }
+                """);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
+        SecurityRule rule = new FsAccessRule();
+        List<Finding> findings = toolMethods.stream()
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
+                .toList();
+
+        // two real operations, not four: the inner Paths.get() is an argument of a call
+        // already reported, and building a Path does no I/O of its own
+        assertEquals(2, findings.size(), findings.toString());
+        assertTrue(findings.stream().anyMatch(f -> f.message().startsWith("Files.exists()")));
+        assertTrue(findings.stream().anyMatch(f -> f.message().startsWith("Files.readString()")));
+        assertTrue(findings.stream().noneMatch(f -> f.message().startsWith("Paths.get()")));
+    }
+
+    @Test
+    void stillReportsAPathBuiltForItsOwnSake(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Standalone.java"), """
+                package com.example;
+
+                public class Standalone {
+
+                    @Tool
+                    public void wipe(String path) throws Exception {
+                        Paths.get(path).toFile().delete();
+                    }
+                }
+                """);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(tempDir);
+        SecurityRule rule = new FsAccessRule();
+        List<Finding> findings = toolMethods.stream()
+                .flatMap(toolMethod -> rule.evaluate(toolMethod, ProjectContext.noHttpExposure()).stream())
+                .toList();
+
+        // nothing else wraps it, so dropping it would be a false negative
+        assertEquals(1, findings.size(), findings.toString());
+        assertTrue(findings.get(0).message().startsWith("Paths.get()"));
     }
 }
