@@ -88,7 +88,7 @@ public class McpToolScanner {
 
         return compilationUnit.findAll(MethodDeclaration.class).stream()
                 .filter(this::isToolMethod)
-                .map(method -> toToolMethod(relativePath, method))
+                .map(method -> toToolMethod(javaFile.toAbsolutePath(), relativePath, method))
                 .collect(Collectors.toList());
     }
 
@@ -97,12 +97,12 @@ public class McpToolScanner {
                 .anyMatch(annotation -> TOOL_ANNOTATIONS.contains(annotation.getNameAsString()));
     }
 
-    private ToolMethod toToolMethod(String relativePath, MethodDeclaration method) {
+    private ToolMethod toToolMethod(Path sourceFile, String relativePath, MethodDeclaration method) {
         String className = method.findAncestor(ClassOrInterfaceDeclaration.class)
                 .map(ClassOrInterfaceDeclaration::getNameAsString)
                 .orElse("<unknown>");
         int line = method.getBegin().map(position -> position.line).orElse(-1);
 
-        return new ToolMethod(relativePath, className, method.getNameAsString(), line, method);
+        return new ToolMethod(sourceFile, relativePath, className, method.getNameAsString(), line, method);
     }
 }

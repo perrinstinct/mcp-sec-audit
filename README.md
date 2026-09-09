@@ -103,11 +103,13 @@ risky call, propagating through local variables:
 Both touch the filesystem; only the first is an arbitrary file read. The finding names the
 parameter responsible, even when it arrives through intermediate variables.
 
-`MISSING_AUTH` is graded on how the server is actually exposed. The scanner reads your build
-files and Spring configuration for evidence of HTTP exposure (a web starter dependency,
-`spring.ai.mcp.server.stdio=false`). With evidence, an unprotected tool is **HIGH**. Without
-it, the server is most likely a local stdio process where `@PreAuthorize` would not apply
-anyway, so the finding drops to **LOW** and says so.
+`MISSING_AUTH` is graded on how the server is actually exposed. For each tool, the scanner
+reads **its own module's** build file and Spring configuration for evidence of HTTP exposure
+(a web starter dependency, `spring.ai.mcp.server.stdio=false`), then its ancestor modules —
+never its siblings, since one module's dependencies say nothing about another's. With
+evidence, an unprotected tool is **HIGH**; without it the server is most likely a local
+stdio process where `@PreAuthorize` would not apply anyway, so the finding drops to **LOW**
+and names the module the evidence came from.
 
 ## Suppressing findings
 
@@ -140,8 +142,11 @@ This is syntactic analysis of your sources. Being explicit about the boundaries:
 - **It matches annotations by simple name.** `@Tool` is `@Tool` regardless of which package
   it came from, so an unrelated annotation with the same name will be picked up. Symbol
   resolution would fix this at the cost of needing your full classpath.
-- **Deployment detection is a heuristic.** A repository that contains a web starter anywhere
-  is treated as HTTP-exposed, even if the MCP server module itself is stdio-only.
+- **Deployment detection reads text, not a resolved build.** Each tool is judged by its own
+  module — its build file and Spring config — plus ancestor modules, never siblings. But
+  markers are matched as substrings, so a dependency only listed under
+  `dependencyManagement`, or inherited from a parent resolved through the repository rather
+  than the directory above, is read the same way or missed entirely.
 - **It reasons about one method at a time.** Taint is tracked inside the tool method only.
   A tool that delegates its risky work to a private helper is not followed, and neither is
   a parameter stored in a field and used later.
@@ -175,7 +180,6 @@ JavaParser.
 ## Roadmap
 
 - Publish as a reusable GitHub Action
-- Per-module deployment detection instead of per-repository
 - Configurable severity thresholds and a findings baseline file
 - Optional symbol resolution for projects willing to supply a classpath
 

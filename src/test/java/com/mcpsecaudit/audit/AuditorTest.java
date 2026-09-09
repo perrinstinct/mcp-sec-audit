@@ -1,12 +1,15 @@
 package com.mcpsecaudit.audit;
 
+import com.mcpsecaudit.model.Finding;
 import com.mcpsecaudit.model.ScanReport;
+import com.mcpsecaudit.model.Severity;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -121,5 +124,47 @@ class AuditorTest {
         ScanReport report = new Auditor().audit(tempDir);
 
         assertTrue(report.findings().stream().noneMatch(f -> f.ruleId().equals("PROC_EXEC")));
+    }
+
+    @Test
+    void gradesToolsByTheirOwnModuleNotTheWholeRepo(@TempDir Path tempDir) throws IOException {
+        String tool = """
+                package com.example;
+
+                public class WeatherService {
+
+                    @Tool
+                    public String forecast(String city) {
+                        return city;
+                    }
+                }
+                """;
+
+        Path webModule = tempDir.resolve("web-server");
+        Files.createDirectories(webModule.resolve("src/main/java"));
+        Files.writeString(webModule.resolve("pom.xml"), """
+                <project><dependencies><dependency>
+                    <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+                </dependency></dependencies></project>
+                """);
+        Files.writeString(webModule.resolve("src/main/java/WeatherService.java"), tool);
+
+        Path stdioModule = tempDir.resolve("stdio-server");
+        Files.createDirectories(stdioModule.resolve("src/main/java"));
+        Files.writeString(stdioModule.resolve("pom.xml"),
+                "<project><artifactId>stdio-server</artifactId></project>");
+        Files.writeString(stdioModule.resolve("src/main/java/WeatherService.java"), tool);
+
+        ScanReport report = new Auditor().audit(tempDir);
+
+        List<Finding> auth = report.findings().stream()
+                .filter(f -> f.ruleId().equals("MISSING_AUTH"))
+                .toList();
+
+        assertEquals(2, auth.size(), auth.toString());
+        assertTrue(auth.stream().anyMatch(
+                f -> f.filePath().contains("web-server") && f.severity() == Severity.HIGH), auth.toString());
+        assertTrue(auth.stream().anyMatch(
+                f -> f.filePath().contains("stdio-server") && f.severity() == Severity.LOW), auth.toString());
     }
 }

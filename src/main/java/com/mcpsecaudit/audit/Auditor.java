@@ -40,12 +40,14 @@ public class Auditor {
 
     public ScanReport audit(Path rootDirectory) throws IOException {
         List<ToolMethod> toolMethods = scanner.scan(rootDirectory);
-        ProjectContext project = contextDetector.detect(rootDirectory);
 
         List<Finding> findings = toolMethods.stream()
-                .flatMap(toolMethod -> rules.stream()
-                        .filter(rule -> !Suppressions.suppresses(toolMethod, rule.ruleId()))
-                        .flatMap(rule -> rule.evaluate(toolMethod, project).stream()))
+                .flatMap(toolMethod -> {
+                    ProjectContext project = contextDetector.detect(toolMethod.sourceFile());
+                    return rules.stream()
+                            .filter(rule -> !Suppressions.suppresses(toolMethod, rule.ruleId()))
+                            .flatMap(rule -> rule.evaluate(toolMethod, project).stream());
+                })
                 .toList();
 
         return new ScanReport(rootDirectory.toString(), Instant.now(), findings);

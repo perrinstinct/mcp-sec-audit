@@ -3,21 +3,27 @@ package com.mcpsecaudit.scanner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Looks for evidence that the scanned project exposes its MCP server over HTTP,
- * by reading build files and Spring configuration rather than Java sources.
+ * Decides whether the module owning a source file can serve HTTP traffic, by reading its
+ * build file and Spring configuration rather than Java sources.
+ *
+ * <p>The unit is the module, not the repository. In a monorepo each module is its own
+ * application: a web starter in {@code misc/some-demo} says nothing about a stdio server
+ * three directories away. Ancestors still count, because a real parent pom can pass
+ * dependencies down, and missing that would quietly downgrade a genuine finding — but
+ * siblings never do.
  */
 public class ProjectContextDetector {
 
-    private static final Set<String> INSPECTED_FILE_NAMES =
+    private static final Set<String> BUILD_FILE_NAMES =
             Set.of("pom.xml", "build.gradle", "build.gradle.kts");
-
-    private static final Set<String> INSPECTED_DIRECTORIES = Set.of("target", "build", "out", ".git");
 
     /** Substring markers that each imply the application can serve HTTP traffic. */
     private static final Map<String, String> HTTP_MARKERS = Map.of(
@@ -28,35 +34,33 @@ public class ProjectContextDetector {
             "stdio: false", "spring.ai.mcp.server.stdio: false"
     );
 
-    public ProjectContext detect(Path scanTarget) throws IOException {
-        Path rootDirectory = resolveProjectRoot(scanTarget);
-        try (Stream<Path> paths = Files.walk(rootDirectory)) {
-            List<Path> candidates = paths
-                    .filter(Files::isRegularFile)
-                    .filter(this::isInspectable)
-                    .toList();
+    private final Map<Path, ProjectContext> byModule = new HashMap<>();
 
-            for (Path candidate : candidates) {
-                String content = readOrEmpty(candidate);
-                for (Map.Entry<String, String> marker : HTTP_MARKERS.entrySet()) {
-                    if (content.contains(marker.getKey())) {
-                        return ProjectContext.httpExposure(
-                                marker.getValue() + " in " + rootDirectory.relativize(candidate));
-                    }
-                }
+    public ProjectContext detect(Path target) {
+        Path module = owningModule(target);
+
+        ProjectContext own = contextOf(module);
+        if (own.httpExposureDetected()) {
+            return own;
+        }
+
+        for (Path ancestor = module.getParent(); ancestor != null; ancestor = ancestor.getParent()) {
+            if (!containsBuildFile(ancestor)) {
+                continue;
+            }
+            ProjectContext inherited = contextOf(ancestor);
+            if (inherited.httpExposureDetected()) {
+                return inherited;
             }
         }
         return ProjectContext.noHttpExposure();
     }
 
-    /**
-     * Deployment evidence lives in the project's build file, which sits above the sources
-     * being scanned - so walk up to the nearest one rather than only looking downward.
-     */
-    private Path resolveProjectRoot(Path scanTarget) {
-        Path directory = Files.isRegularFile(scanTarget)
-                ? scanTarget.toAbsolutePath().getParent()
-                : scanTarget.toAbsolutePath();
+    /** The nearest directory at or above the target that owns a build file. */
+    private Path owningModule(Path target) {
+        Path directory = Files.isDirectory(target)
+                ? target.toAbsolutePath()
+                : target.toAbsolutePath().getParent();
 
         for (Path candidate = directory; candidate != null; candidate = candidate.getParent()) {
             if (containsBuildFile(candidate)) {
@@ -66,24 +70,58 @@ public class ProjectContextDetector {
         return directory;
     }
 
-    private boolean containsBuildFile(Path directory) {
-        return INSPECTED_FILE_NAMES.stream()
-                .anyMatch(fileName -> Files.isRegularFile(directory.resolve(fileName)));
+    private ProjectContext contextOf(Path moduleDirectory) {
+        return byModule.computeIfAbsent(moduleDirectory, this::inspect);
     }
 
-    private boolean isInspectable(Path path) {
-        for (Path segment : path) {
-            if (INSPECTED_DIRECTORIES.contains(segment.toString())) {
-                return false;
+    private ProjectContext inspect(Path moduleDirectory) {
+        for (Path file : filesOwnedBy(moduleDirectory)) {
+            String content = readOrEmpty(file);
+            for (Map.Entry<String, String> marker : HTTP_MARKERS.entrySet()) {
+                if (content.contains(marker.getKey())) {
+                    return ProjectContext.httpExposure("%s in %s/%s".formatted(
+                            marker.getValue(),
+                            moduleDirectory.getFileName(),
+                            moduleDirectory.relativize(file)));
+                }
             }
         }
-        String fileName = path.getFileName().toString();
-        return INSPECTED_FILE_NAMES.contains(fileName)
-                || (fileName.startsWith("application") && isSpringConfigExtension(fileName));
+        return ProjectContext.noHttpExposure();
     }
 
-    private boolean isSpringConfigExtension(String fileName) {
-        return fileName.endsWith(".properties") || fileName.endsWith(".yml") || fileName.endsWith(".yaml");
+    /**
+     * The module's own build files plus its Spring configuration. Never looks sideways
+     * into other modules, which is what made a sibling's dependency contaminate the
+     * whole repository.
+     */
+    private List<Path> filesOwnedBy(Path moduleDirectory) {
+        List<Path> files = new ArrayList<>();
+        for (String buildFileName : BUILD_FILE_NAMES) {
+            Path buildFile = moduleDirectory.resolve(buildFileName);
+            if (Files.isRegularFile(buildFile)) {
+                files.add(buildFile);
+            }
+        }
+
+        Path sources = moduleDirectory.resolve("src");
+        if (Files.isDirectory(sources)) {
+            try (Stream<Path> paths = Files.walk(sources)) {
+                paths.filter(Files::isRegularFile).filter(this::isSpringConfig).forEach(files::add);
+            } catch (IOException e) {
+                // an unreadable module simply yields no evidence
+            }
+        }
+        return files;
+    }
+
+    private boolean containsBuildFile(Path directory) {
+        return BUILD_FILE_NAMES.stream().anyMatch(name -> Files.isRegularFile(directory.resolve(name)));
+    }
+
+    private boolean isSpringConfig(Path file) {
+        String fileName = file.getFileName().toString();
+        return fileName.startsWith("application")
+                && (fileName.endsWith(".properties") || fileName.endsWith(".yml") || fileName.endsWith(".yaml"));
     }
 
     private String readOrEmpty(Path file) {

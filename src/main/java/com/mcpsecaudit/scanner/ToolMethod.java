@@ -2,7 +2,10 @@ package com.mcpsecaudit.scanner;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 
+import java.nio.file.Path;
+
 public record ToolMethod(
+        Path sourceFile,
         String filePath,
         String className,
         String methodName,
@@ -10,6 +13,9 @@ public record ToolMethod(
         MethodDeclaration methodDeclaration
 ) {
     public ToolMethod {
+        if (sourceFile == null) {
+            throw new IllegalArgumentException("sourceFile must not be null");
+        }
         if (filePath == null || filePath.isBlank()) {
             throw new IllegalArgumentException("filePath must not be blank");
         }
