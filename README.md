@@ -152,6 +152,9 @@ This is syntactic analysis of your sources. Being explicit about the boundaries:
 
 Findings are a starting point for review, not a verdict.
 
+The console groups findings of the same rule within one tool method — validating a
+parameter once usually clears all of them. The JSON report always keeps every location.
+
 ## Building
 
 Requires JDK 21 and Maven. For the native binary, GraalVM 21.

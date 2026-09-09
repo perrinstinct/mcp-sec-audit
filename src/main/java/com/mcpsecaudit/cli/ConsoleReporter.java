@@ -5,13 +5,29 @@ import com.mcpsecaudit.model.ScanReport;
 import com.mcpsecaudit.model.Severity;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 public class ConsoleReporter {
 
-    private static final List<Severity> SEVERITY_ORDER = List.of(Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW);
+    private static final List<Severity> SEVERITY_ORDER =
+            List.of(Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW);
+
+    /**
+     * One line per thing to fix. Several findings of the same rule in the same tool method
+     * are one problem - validate the parameter once and they all go - so they are shown
+     * together. The JSON report keeps every location, which is what SARIF consumers and
+     * PR annotations need.
+     */
+    private record Group(String ruleId, Severity severity, String filePath, String className, String methodName) {
+
+        static Group of(Finding finding) {
+            return new Group(finding.ruleId(), finding.severity(), finding.filePath(),
+                    finding.className(), finding.methodName());
+        }
+    }
 
     public String format(ScanReport report) {
         StringBuilder output = new StringBuilder();
@@ -26,12 +42,10 @@ public class ConsoleReporter {
             return output.toString();
         }
 
-        output.append(findings.size()).append(" finding(s):")
+        output.append(findings.size()).append(" finding(s), grouped by tool method:")
                 .append(System.lineSeparator()).append(System.lineSeparator());
 
-        for (Finding finding : findings) {
-            appendFinding(output, finding);
-        }
+        groupByToolMethod(findings).values().forEach(group -> appendGroup(output, group));
 
         output.append("Summary: ").append(summarize(findings)).append(System.lineSeparator());
 
@@ -46,12 +60,25 @@ public class ConsoleReporter {
                 .toList();
     }
 
-    private void appendFinding(StringBuilder output, Finding finding) {
+    private Map<Group, List<Finding>> groupByToolMethod(List<Finding> findings) {
+        return findings.stream().collect(Collectors.groupingBy(
+                Group::of, LinkedHashMap::new, Collectors.toList()));
+    }
+
+    private void appendGroup(StringBuilder output, List<Finding> group) {
+        Finding first = group.get(0);
         output.append("[%s] %s  %s:%d  %s#%s".formatted(
-                finding.severity(), finding.ruleId(), finding.filePath(), finding.line(),
-                finding.className(), finding.methodName()
+                first.severity(), first.ruleId(), first.filePath(), first.line(),
+                first.className(), first.methodName()
         )).append(System.lineSeparator());
-        output.append("  ").append(finding.message()).append(System.lineSeparator());
+        output.append("  ").append(first.message()).append(System.lineSeparator());
+
+        if (group.size() > 1) {
+            String otherLines = group.stream().skip(1)
+                    .map(finding -> String.valueOf(finding.line()))
+                    .collect(Collectors.joining(", "));
+            output.append("  also at lines ").append(otherLines).append(System.lineSeparator());
+        }
         output.append(System.lineSeparator());
     }
 
