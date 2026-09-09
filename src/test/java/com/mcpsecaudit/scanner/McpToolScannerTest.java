@@ -155,4 +155,44 @@ class McpToolScannerTest {
         Files.createDirectories(file.getParent());
         Files.writeString(file, content);
     }
+
+    @Test
+    void scansASingleFileWhenGivenOneDirectly(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("Solo.java");
+        Files.writeString(file, """
+                package com.example;
+
+                public class Solo {
+
+                    @Tool
+                    public void doSomething() {
+                    }
+                }
+                """);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(file);
+
+        assertEquals(1, toolMethods.size());
+        assertEquals("doSomething", toolMethods.get(0).methodName());
+        assertEquals("Solo.java", toolMethods.get(0).filePath());
+    }
+
+    @Test
+    void scansAnExplicitlyNamedTestSourceFile(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("src/test/java/com/example/SomeToolTest.java");
+        writeJava(file, """
+                package com.example;
+
+                public class SomeToolTest {
+
+                    @Tool
+                    public void doSomething() {
+                    }
+                }
+                """);
+
+        List<ToolMethod> toolMethods = new McpToolScanner().scan(file);
+
+        assertEquals(1, toolMethods.size());
+    }
 }

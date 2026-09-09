@@ -69,4 +69,37 @@ class ProjectContextDetectorTest {
 
         assertFalse(context.httpExposureDetected());
     }
+
+    @Test
+    void findsTheBuildFileAboveTheScannedSubdirectory(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project><dependencies><dependency>
+                    <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+                </dependency></dependencies></project>
+                """);
+        Path sources = tempDir.resolve("src/main/java/com/example");
+        Files.createDirectories(sources);
+        Files.writeString(sources.resolve("Tool.java"), "public class Tool {}");
+
+        ProjectContext context = new ProjectContextDetector().detect(sources);
+
+        assertTrue(context.httpExposureDetected(),
+                "scanning a subdirectory must still see the project's own build file");
+    }
+
+    @Test
+    void findsTheBuildFileWhenGivenASingleFile(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project><dependencies><dependency>
+                    <artifactId>spring-boot-starter-web</artifactId>
+                </dependency></dependencies></project>
+                """);
+        Path file = tempDir.resolve("src/main/java/Tool.java");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "public class Tool {}");
+
+        ProjectContext context = new ProjectContextDetector().detect(file);
+
+        assertTrue(context.httpExposureDetected());
+    }
 }

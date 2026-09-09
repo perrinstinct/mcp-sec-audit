@@ -54,11 +54,15 @@ Or build it yourself — see [Building](#building).
 ## Usage
 
 ```bash
-mcp-sec-audit <path>                       # scan a source tree
+mcp-sec-audit <dir>                        # scan a source tree
+mcp-sec-audit <file>.java                  # scan a single file
 mcp-sec-audit <path> --json report.json    # also write a structured report
 mcp-sec-audit <path> --fail-on-critical    # exit 1 on any CRITICAL finding (for CI)
 mcp-sec-audit <path> --include-tests       # also scan src/test (skipped by default)
 ```
+
+Exit codes: `0` success, `1` the `--fail-on-critical` gate tripped, `2` bad input.
+A file named explicitly is always scanned, even under `src/test`.
 
 | Option | Effect |
 | --- | --- |

@@ -28,7 +28,8 @@ public class ProjectContextDetector {
             "stdio: false", "spring.ai.mcp.server.stdio: false"
     );
 
-    public ProjectContext detect(Path rootDirectory) throws IOException {
+    public ProjectContext detect(Path scanTarget) throws IOException {
+        Path rootDirectory = resolveProjectRoot(scanTarget);
         try (Stream<Path> paths = Files.walk(rootDirectory)) {
             List<Path> candidates = paths
                     .filter(Files::isRegularFile)
@@ -46,6 +47,28 @@ public class ProjectContextDetector {
             }
         }
         return ProjectContext.noHttpExposure();
+    }
+
+    /**
+     * Deployment evidence lives in the project's build file, which sits above the sources
+     * being scanned - so walk up to the nearest one rather than only looking downward.
+     */
+    private Path resolveProjectRoot(Path scanTarget) {
+        Path directory = Files.isRegularFile(scanTarget)
+                ? scanTarget.toAbsolutePath().getParent()
+                : scanTarget.toAbsolutePath();
+
+        for (Path candidate = directory; candidate != null; candidate = candidate.getParent()) {
+            if (containsBuildFile(candidate)) {
+                return candidate;
+            }
+        }
+        return directory;
+    }
+
+    private boolean containsBuildFile(Path directory) {
+        return INSPECTED_FILE_NAMES.stream()
+                .anyMatch(fileName -> Files.isRegularFile(directory.resolve(fileName)));
     }
 
     private boolean isInspectable(Path path) {

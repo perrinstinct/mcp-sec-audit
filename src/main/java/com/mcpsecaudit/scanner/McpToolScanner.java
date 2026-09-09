@@ -35,7 +35,16 @@ public class McpToolScanner {
         this.includeTestSources = includeTestSources;
     }
 
-    public List<ToolMethod> scan(Path rootDirectory) throws IOException {
+    /** Accepts a directory to walk, or a single .java file named explicitly. */
+    public List<ToolMethod> scan(Path target) throws IOException {
+        if (Files.isRegularFile(target)) {
+            Path file = target.toAbsolutePath();
+            return findToolMethods(file.getParent(), file);
+        }
+        return scanDirectory(target);
+    }
+
+    private List<ToolMethod> scanDirectory(Path rootDirectory) throws IOException {
         try (Stream<Path> paths = Files.walk(rootDirectory)) {
             return paths
                     .filter(Files::isRegularFile)
