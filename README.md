@@ -57,6 +57,7 @@ Or build it yourself — see [Building](#building).
 mcp-sec-audit <dir>                        # scan a source tree
 mcp-sec-audit <file>.java                  # scan a single file
 mcp-sec-audit <path> --json report.json    # also write a structured report
+mcp-sec-audit <path> --sarif out.sarif     # SARIF 2.1.0, for GitHub Code Scanning
 mcp-sec-audit <path> --fail-on-critical    # exit 1 on any CRITICAL finding (for CI)
 mcp-sec-audit <path> --include-tests       # also scan src/test (skipped by default)
 ```
@@ -67,6 +68,7 @@ A file named explicitly is always scanned, even under `src/test`.
 | Option | Effect |
 | --- | --- |
 | `--json <file>` | Write the full report as JSON |
+| `--sarif <file>` | Write a SARIF 2.1.0 report for GitHub Code Scanning |
 | `--fail-on-critical` | Exit with status 1 if any CRITICAL finding is present |
 | `--include-tests` | Scan `src/test` sources too |
 | `-V`, `--version` | Print the version |
@@ -128,10 +130,30 @@ suppresses only those.
 
 ## Use in CI
 
+Fail the build on model-controlled command execution:
+
 ```yaml
 - name: Audit MCP tools
   run: mcp-sec-audit . --fail-on-critical --json mcp-sec-audit.json
 ```
+
+Or surface findings in the Security tab and as inline pull request annotations:
+
+```yaml
+- name: Audit MCP tools
+  run: mcp-sec-audit . --sarif mcp-sec-audit.sarif
+
+- name: Upload to code scanning
+  uses: github/codeql-action/upload-sarif@v4
+  with:
+    sarif_file: mcp-sec-audit.sarif
+```
+
+Run it from the repository root so the paths in the report match your checkout — URIs are
+made relative to the working directory. CRITICAL and HIGH map to SARIF `error`, MEDIUM to
+`warning`, LOW to `note`; on GitHub, `error` alerts can fail a pull request check.
+
+Code scanning is free on public repositories; private ones need GitHub Advanced Security.
 
 ## What it deliberately does not do
 

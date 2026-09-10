@@ -3,6 +3,7 @@ package com.mcpsecaudit.cli;
 import com.mcpsecaudit.McpSecAudit;
 import picocli.CommandLine;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
@@ -10,14 +11,21 @@ import java.util.Properties;
 public class VersionProvider implements CommandLine.IVersionProvider {
 
     @Override
-    public String[] getVersion() throws Exception {
+    public String[] getVersion() {
+        return new String[]{McpSecAudit.NAME + " " + version()};
+    }
+
+    /** The version Maven filtered in, or "unknown" if the resource is missing. */
+    public static String version() {
         try (InputStream stream = VersionProvider.class.getResourceAsStream("/version.properties")) {
             if (stream == null) {
-                return new String[]{McpSecAudit.NAME + " (unknown version)"};
+                return "unknown";
             }
             Properties properties = new Properties();
             properties.load(stream);
-            return new String[]{McpSecAudit.NAME + " " + properties.getProperty("version", "unknown")};
+            return properties.getProperty("version", "unknown");
+        } catch (IOException e) {
+            return "unknown";
         }
     }
 }

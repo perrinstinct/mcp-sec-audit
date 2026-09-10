@@ -29,6 +29,10 @@ public class ScanCommand implements Callable<Integer> {
     @Option(names = "--json", description = "Write the JSON report to this file")
     private Path jsonOutput;
 
+    @Option(names = "--sarif",
+            description = "Write a SARIF 2.1.0 report to this file, for GitHub Code Scanning")
+    private Path sarifOutput;
+
     @Option(names = "--fail-on-critical", description = "Exit with status 1 if any CRITICAL finding is found")
     private boolean failOnCritical;
 
@@ -63,6 +67,17 @@ public class ScanCommand implements Callable<Integer> {
             } catch (IOException e) {
                 spec.commandLine().getErr().println(
                         McpSecAudit.NAME + ": cannot write " + jsonOutput + ": " + e.getMessage());
+                return CommandLine.ExitCode.USAGE;
+            }
+        }
+
+        if (sarifOutput != null) {
+            try {
+                // URIs are rebased on the working directory, which in CI is the checkout root
+                new SarifReportWriter().write(report, sarifOutput, Path.of("").toAbsolutePath());
+            } catch (IOException e) {
+                spec.commandLine().getErr().println(
+                        McpSecAudit.NAME + ": cannot write " + sarifOutput + ": " + e.getMessage());
                 return CommandLine.ExitCode.USAGE;
             }
         }

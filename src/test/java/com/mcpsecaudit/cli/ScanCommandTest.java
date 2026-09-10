@@ -122,4 +122,19 @@ class ScanCommandTest {
         assertEquals(CommandLine.ExitCode.USAGE, exitCode);
         assertTrue(err.toString().contains("not a Java source file"), err.toString());
     }
+
+    @Test
+    void writesASarifReportWhenAskedTo(@TempDir Path tempDir) throws IOException {
+        writeVulnerableTool(tempDir);
+        Path sarifFile = tempDir.resolve("report.sarif");
+
+        int exitCode = new CommandLine(new ScanCommand())
+                .execute(tempDir.toString(), "--sarif", sarifFile.toString());
+
+        assertEquals(0, exitCode);
+        String sarif = Files.readString(sarifFile);
+        assertTrue(sarif.contains("\"version\" : \"2.1.0\""), sarif);
+        assertTrue(sarif.contains("PROC_EXEC"), sarif);
+        assertTrue(sarif.contains("\"level\" : \"error\""), sarif);
+    }
 }
