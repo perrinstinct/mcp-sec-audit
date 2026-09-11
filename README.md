@@ -130,23 +130,43 @@ suppresses only those.
 
 ## Use in CI
 
-Fail the build on model-controlled command execution:
+The action downloads the right binary for the runner and runs it:
 
 ```yaml
-- name: Audit MCP tools
-  run: mcp-sec-audit . --fail-on-critical --json mcp-sec-audit.json
+- uses: actions/checkout@v7
+
+- uses: perrinstinct/mcp-sec-audit@v0.1.1
+  with:
+    path: .
+    fail-on-critical: true
 ```
 
-Or surface findings in the Security tab and as inline pull request annotations:
+| Input | Default | Effect |
+| --- | --- | --- |
+| `path` | `.` | Directory or `.java` file to scan |
+| `version` | `latest` | Release to download — pin it for reproducible builds |
+| `fail-on-critical` | `false` | Fail the job on any CRITICAL finding |
+| `include-tests` | `false` | Also scan `src/test` |
+| `sarif-file` | — | Write a SARIF report to this path |
+| `json-file` | — | Write a JSON report to this path |
+
+To surface findings in the Security tab and as inline pull request annotations:
 
 ```yaml
-- name: Audit MCP tools
-  run: mcp-sec-audit . --sarif mcp-sec-audit.sarif
+- uses: perrinstinct/mcp-sec-audit@v0.1.1
+  with:
+    sarif-file: mcp-sec-audit.sarif
 
-- name: Upload to code scanning
-  uses: github/codeql-action/upload-sarif@v4
+- uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: mcp-sec-audit.sarif
+```
+
+Linux x86_64 and macOS on both architectures are covered; there is no Windows binary yet.
+Without the action, call the binary directly:
+
+```yaml
+- run: mcp-sec-audit . --fail-on-critical --sarif mcp-sec-audit.sarif
 ```
 
 Run it from the repository root so the paths in the report match your checkout — URIs are
