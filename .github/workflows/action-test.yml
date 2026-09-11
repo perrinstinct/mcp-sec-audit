@@ -1,0 +1,68 @@
+name: Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write a deliberately vulnerable fixture
+        run: |
+          mkdir -p fixture
+          cat > fixture/ShellTool.java <<'EOF'
+          public class ShellTool {
+              @Tool
+              public void run(String command) throws Exception {
+                  Runtime.getRuntime().exec(command);
+              }
+          }
+          EOF
+
+      - name: Scan without the gate
+        uses: ./
+        with:
+          path: fixture
+          sarif-file: fixture.sarif
+          json-file: fixture.json
+
+      - name: The reports must exist and name the rule
+        run: |
+          set -euo pipefail
+          grep -q '"version" : "2.1.0"' fixture.sarif
+          grep -q PROC_EXEC fixture.sarif
+          grep -q PROC_EXEC fixture.json
+
+      # The gate must actually fail the step, so run it in a way that lets the
+      # job continue and assert on the outcome.
+      - name: Scan with the gate
+        id: gated
+        continue-on-error: true
+        uses: ./
+        with:
+          path: fixture
+          fail-on-critical: true
+
+      - name: The gate must have failed on a model-controlled exec
+        run: |
+          if [ "${{ steps.gated.outcome }}" != failure ]; then
+            echo "::error::--fail-on-critical did not fail the step"
+            exit 1
+          fi
+
+      - name: Clean code must pass the gate
+        uses: ./
+        with:
+          path: src/main/java
+          fail-on-critical: true

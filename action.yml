@@ -1,0 +1,98 @@
+name: mcp-sec-audit
+description: Scan Spring AI MCP servers for tool methods exposing risky capabilities without authorization
+author: perrinstinct
+
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  path:
+    description: Directory or .java file to scan
+    required: false
+    default: '.'
+  version:
+    description: >
+      Release to download, for example v0.1.0. Defaults to the latest release;
+      pin it if you want reproducible builds.
+    required: false
+    default: latest
+  fail-on-critical:
+    description: Fail the job when a CRITICAL finding is present
+    required: false
+    default: 'false'
+  include-tests:
+    description: Also scan sources under src/test
+    required: false
+    default: 'false'
+  sarif-file:
+    description: Write a SARIF 2.1.0 report to this file, for github/codeql-action/upload-sarif
+    required: false
+    default: ''
+  json-file:
+    description: Write the full report as JSON to this file
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Download mcp-sec-audit
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64)   asset=mcp-sec-audit-linux-x86_64 ;;
+          macOS/ARM64) asset=mcp-sec-audit-macos-aarch64 ;;
+          macOS/X64)   asset=mcp-sec-audit-macos-x86_64 ;;
+          *)
+            echo "::error::mcp-sec-audit ships no binary for $RUNNER_OS/$RUNNER_ARCH"
+            exit 1
+            ;;
+        esac
+
+        directory="$RUNNER_TEMP/mcp-sec-audit"
+        mkdir -p "$directory"
+
+        if [ "$VERSION" = latest ]; then
+          gh release download --repo perrinstinct/mcp-sec-audit \
+            --pattern "$asset" --dir "$directory" --clobber
+        else
+          gh release download "$VERSION" --repo perrinstinct/mcp-sec-audit \
+            --pattern "$asset" --dir "$directory" --clobber
+        fi
+
+        mv "$directory/$asset" "$directory/mcp-sec-audit"
+        chmod +x "$directory/mcp-sec-audit"
+        echo "$directory" >> "$GITHUB_PATH"
+
+    - name: Scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
+        INCLUDE_TESTS: ${{ inputs.include-tests }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+        JSON_FILE: ${{ inputs.json-file }}
+      run: |
+        set -euo pipefail
+
+        arguments=("$SCAN_PATH")
+        if [ "$FAIL_ON_CRITICAL" = true ]; then
+          arguments+=(--fail-on-critical)
+        fi
+        if [ "$INCLUDE_TESTS" = true ]; then
+          arguments+=(--include-tests)
+        fi
+        if [ -n "$SARIF_FILE" ]; then
+          arguments+=(--sarif "$SARIF_FILE")
+        fi
+        if [ -n "$JSON_FILE" ]; then
+          arguments+=(--json "$JSON_FILE")
+        fi
+
+        mcp-sec-audit "${arguments[@]}"
