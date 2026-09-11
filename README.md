@@ -72,6 +72,8 @@ A file named explicitly is always scanned, even under `src/test`.
 | --- | --- |
 | `--json <file>` | Write the full report as JSON |
 | `--sarif <file>` | Write a SARIF 2.1.0 report for GitHub Code Scanning |
+| `--baseline <file>` | Ignore findings recorded in this baseline |
+| `--write-baseline <file>` | Record the current findings as a baseline and exit |
 | `--fail-on-critical` | Exit with status 1 if any CRITICAL finding is present |
 | `--include-tests` | Scan `src/test` sources too |
 | `-V`, `--version` | Print the version |
@@ -116,6 +118,32 @@ evidence, an unprotected tool is **HIGH**; without it the server is most likely 
 stdio process where `@PreAuthorize` would not apply anyway, so the finding drops to **LOW**
 and names the module the evidence came from.
 
+## Adopting it on an existing codebase
+
+Turning the tool on a mature project usually means a wall of findings and a red build on
+day one. Record what is already there, then gate only on what comes next:
+
+```bash
+mcp-sec-audit . --write-baseline .mcp-sec-audit-baseline
+```
+
+Commit that file, and pass it from then on:
+
+```bash
+mcp-sec-audit . --baseline .mcp-sec-audit-baseline --fail-on-critical
+```
+
+Existing findings stay quiet; anything new fails the build. Entries look like this, so a
+reviewer can see what a pull request is asking to ignore:
+
+```
+FS_ACCESS|HIGH|src/main/java/com/example/DocumentProvider.java|DocumentProvider#readDocContents
+```
+
+Line numbers are deliberately absent — an edit above a finding would otherwise invalidate
+the whole file. Severity is part of the entry, so a finding escalating from MEDIUM to HIGH,
+which means a tool parameter now reaches the sink, resurfaces despite the baseline.
+
 ## Suppressing findings
 
 Put a marker in a comment on — or inside — the tool method:
@@ -150,6 +178,7 @@ The action downloads the right binary for the runner and runs it:
 | `version` | `latest` | Release to download — pin it for reproducible builds |
 | `fail-on-critical` | `false` | Fail the job on any CRITICAL finding |
 | `include-tests` | `false` | Also scan `src/test` |
+| `baseline-file` | — | Ignore findings recorded in this baseline |
 | `sarif-file` | — | Write a SARIF report to this path |
 | `json-file` | — | Write a JSON report to this path |
 

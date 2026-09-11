@@ -33,6 +33,14 @@ public class ScanCommand implements Callable<Integer> {
             description = "Write a SARIF 2.1.0 report to this file, for GitHub Code Scanning")
     private Path sarifOutput;
 
+    @Option(names = "--baseline",
+            description = "Ignore findings recorded in this baseline file")
+    private Path baselineFile;
+
+    @Option(names = "--write-baseline",
+            description = "Record the current findings as a baseline in this file and exit 0")
+    private Path baselineToWrite;
+
     @Option(names = "--fail-on-critical", description = "Exit with status 1 if any CRITICAL finding is found")
     private boolean failOnCritical;
 
@@ -57,6 +65,37 @@ public class ScanCommand implements Callable<Integer> {
             spec.commandLine().getErr().println(
                     McpSecAudit.NAME + ": cannot read " + path + ": " + e.getMessage());
             return CommandLine.ExitCode.USAGE;
+        }
+
+        if (baselineToWrite != null) {
+            try {
+                Baseline.of(report).writeTo(baselineToWrite);
+            } catch (IOException e) {
+                spec.commandLine().getErr().println(
+                        McpSecAudit.NAME + ": cannot write " + baselineToWrite + ": " + e.getMessage());
+                return CommandLine.ExitCode.USAGE;
+            }
+            spec.commandLine().getOut().println("Recorded " + report.findings().size()
+                    + " finding(s) as a baseline in " + baselineToWrite);
+            return 0;
+        }
+
+        if (baselineFile != null) {
+            Baseline baseline;
+            try {
+                baseline = Baseline.readFrom(baselineFile);
+            } catch (IOException e) {
+                spec.commandLine().getErr().println(
+                        McpSecAudit.NAME + ": cannot read " + baselineFile + ": " + e.getMessage());
+                return CommandLine.ExitCode.USAGE;
+            }
+            int before = report.findings().size();
+            report = baseline.filter(report);
+            int suppressed = before - report.findings().size();
+            if (suppressed > 0) {
+                spec.commandLine().getOut().println(
+                        suppressed + " finding(s) suppressed by " + baselineFile);
+            }
         }
 
         spec.commandLine().getOut().println(new ConsoleReporter().format(report));

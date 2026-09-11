@@ -137,4 +137,48 @@ class ScanCommandTest {
         assertTrue(sarif.contains("PROC_EXEC"), sarif);
         assertTrue(sarif.contains("\"level\" : \"error\""), sarif);
     }
+
+    @Test
+    void recordsKnownFindingsAndStopsGatingOnThem(@TempDir Path tempDir) throws IOException {
+        writeVulnerableTool(tempDir);
+        Path baseline = tempDir.resolve("baseline.txt");
+
+        int recording = new CommandLine(new ScanCommand())
+                .execute(tempDir.toString(), "--write-baseline", baseline.toString());
+
+        assertEquals(0, recording);
+        assertTrue(Files.readString(baseline).contains("PROC_EXEC"), Files.readString(baseline));
+
+        // the same code, now known: the gate must no longer trip
+        int gated = new CommandLine(new ScanCommand())
+                .execute(tempDir.toString(), "--baseline", baseline.toString(), "--fail-on-critical");
+
+        assertEquals(0, gated, "a baselined finding must not fail the build");
+    }
+
+    @Test
+    void stillGatesOnFindingsTheBaselineDoesNotKnow(@TempDir Path tempDir) throws IOException {
+        writeVulnerableTool(tempDir);
+        Path baseline = tempDir.resolve("baseline.txt");
+        new CommandLine(new ScanCommand())
+                .execute(tempDir.toString(), "--write-baseline", baseline.toString());
+
+        // somebody adds a second tool that shells out
+        Files.writeString(tempDir.resolve("OtherTool.java"), """
+                package com.example;
+
+                public class OtherTool {
+
+                    @Tool
+                    public void alsoRuns(String command) throws Exception {
+                        Runtime.getRuntime().exec(command);
+                    }
+                }
+                """);
+
+        int gated = new CommandLine(new ScanCommand())
+                .execute(tempDir.toString(), "--baseline", baseline.toString(), "--fail-on-critical");
+
+        assertEquals(1, gated, "a finding absent from the baseline must still fail the build");
+    }
 }

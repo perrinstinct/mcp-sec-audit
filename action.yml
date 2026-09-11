@@ -25,6 +25,10 @@ inputs:
     description: Also scan sources under src/test
     required: false
     default: 'false'
+  baseline-file:
+    description: Ignore findings recorded in this baseline file
+    required: false
+    default: ''
   sarif-file:
     description: Write a SARIF 2.1.0 report to this file, for github/codeql-action/upload-sarif
     required: false
@@ -93,6 +97,7 @@ runs:
         SCAN_PATH: ${{ inputs.path }}
         FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
         INCLUDE_TESTS: ${{ inputs.include-tests }}
+        BASELINE_FILE: ${{ inputs.baseline-file }}
         SARIF_FILE: ${{ inputs.sarif-file }}
         JSON_FILE: ${{ inputs.json-file }}
       run: |
@@ -104,6 +109,9 @@ runs:
         fi
         if [ "$INCLUDE_TESTS" = true ]; then
           arguments+=(--include-tests)
+        fi
+        if [ -n "$BASELINE_FILE" ]; then
+          arguments+=(--baseline "$BASELINE_FILE")
         fi
         if [ -n "$SARIF_FILE" ]; then
           arguments+=(--sarif "$SARIF_FILE")
