@@ -49,6 +49,9 @@ Download the binary for your platform from the [latest release](../../releases/l
 chmod +x mcp-sec-audit && sudo mv mcp-sec-audit /usr/local/bin/
 ```
 
+On a platform with no native binary, the same release ships `mcp-sec-audit.jar`, which runs
+anywhere with Java 21+: `java -jar mcp-sec-audit.jar <path>`.
+
 Or build it yourself — see [Building](#building).
 
 ## Usage
@@ -135,7 +138,7 @@ The action downloads the right binary for the runner and runs it:
 ```yaml
 - uses: actions/checkout@v7
 
-- uses: perrinstinct/mcp-sec-audit@v0.1.1
+- uses: perrinstinct/mcp-sec-audit@v0.1.2
   with:
     path: .
     fail-on-critical: true
@@ -153,7 +156,7 @@ The action downloads the right binary for the runner and runs it:
 To surface findings in the Security tab and as inline pull request annotations:
 
 ```yaml
-- uses: perrinstinct/mcp-sec-audit@v0.1.1
+- uses: perrinstinct/mcp-sec-audit@v0.1.2
   with:
     sarif-file: mcp-sec-audit.sarif
 
@@ -162,7 +165,16 @@ To surface findings in the Security tab and as inline pull request annotations:
     sarif_file: mcp-sec-audit.sarif
 ```
 
-Linux x86_64 and macOS on both architectures are covered; there is no Windows binary yet.
+Linux x86_64 and macOS on both architectures get a native binary. Every other runner —
+Linux arm64, Windows — falls back to a portable jar, which needs Java 21 or later:
+
+```yaml
+- uses: actions/setup-java@v6
+  with: { distribution: temurin, java-version: '21' }
+
+- uses: perrinstinct/mcp-sec-audit@v0.1.2
+```
+
 Without the action, call the binary directly:
 
 ```yaml

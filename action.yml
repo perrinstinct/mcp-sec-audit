@@ -65,12 +65,19 @@ runs:
         fi
 
         if [ "$asset" = mcp-sec-audit.jar ]; then
-          if ! command -v java > /dev/null; then
-            echo "::error::$RUNNER_OS/$RUNNER_ARCH has no native binary, so mcp-sec-audit" \
-                 "falls back to the jar - add actions/setup-java before this step"
+          # Deliberately not installing a JDK ourselves: setup-java would rewrite
+          # JAVA_HOME for the rest of the caller's job.
+          java_major=''
+          if command -v java > /dev/null; then
+            java_major=$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)
+          fi
+          if [ -z "$java_major" ] || [ "$java_major" -lt 21 ]; then
+            echo "::error::mcp-sec-audit ships no binary for $RUNNER_OS/$RUNNER_ARCH and falls" \
+                 "back to a jar needing Java 21+, but found ${java_major:-no java}." \
+                 "Add actions/setup-java with java-version 21 before this step."
             exit 1
           fi
-          echo "No native binary for $RUNNER_OS/$RUNNER_ARCH, using the portable jar"
+          echo "No native binary for $RUNNER_OS/$RUNNER_ARCH, using the portable jar on Java $java_major"
           printf '#!/usr/bin/env bash\nexec java -jar "%s" "$@"\n' \
             "$directory/$asset" > "$directory/mcp-sec-audit"
         else
