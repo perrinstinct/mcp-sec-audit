@@ -10,11 +10,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # oldest supported Ubuntu: a binary linked against a newer glibc
+          # refuses to start on older distributions
+          - os: ubuntu-22.04
             asset: mcp-sec-audit-linux-x86_64
           - os: macos-latest
             asset: mcp-sec-audit-macos-aarch64
-          - os: macos-13
+          - os: macos-15-intel
             asset: mcp-sec-audit-macos-x86_64
     runs-on: ${{ matrix.os }}
     steps:
