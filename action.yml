@@ -45,14 +45,12 @@ runs:
       run: |
         set -euo pipefail
 
+        # Native where we build one, the portable jar everywhere else.
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64)   asset=mcp-sec-audit-linux-x86_64 ;;
           macOS/ARM64) asset=mcp-sec-audit-macos-aarch64 ;;
           macOS/X64)   asset=mcp-sec-audit-macos-x86_64 ;;
-          *)
-            echo "::error::mcp-sec-audit ships no binary for $RUNNER_OS/$RUNNER_ARCH"
-            exit 1
-            ;;
+          *)           asset=mcp-sec-audit.jar ;;
         esac
 
         directory="$RUNNER_TEMP/mcp-sec-audit"
@@ -66,7 +64,19 @@ runs:
             --pattern "$asset" --dir "$directory" --clobber
         fi
 
-        mv "$directory/$asset" "$directory/mcp-sec-audit"
+        if [ "$asset" = mcp-sec-audit.jar ]; then
+          if ! command -v java > /dev/null; then
+            echo "::error::$RUNNER_OS/$RUNNER_ARCH has no native binary, so mcp-sec-audit" \
+                 "falls back to the jar - add actions/setup-java before this step"
+            exit 1
+          fi
+          echo "No native binary for $RUNNER_OS/$RUNNER_ARCH, using the portable jar"
+          printf '#!/usr/bin/env bash\nexec java -jar "%s" "$@"\n' \
+            "$directory/$asset" > "$directory/mcp-sec-audit"
+        else
+          mv "$directory/$asset" "$directory/mcp-sec-audit"
+        fi
+
         chmod +x "$directory/mcp-sec-audit"
         echo "$directory" >> "$GITHUB_PATH"
 
