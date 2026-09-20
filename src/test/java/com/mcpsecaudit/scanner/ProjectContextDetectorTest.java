@@ -157,6 +157,167 @@ class ProjectContextDetectorTest {
     }
 
     @Test
+    void detectsAuthenticationFromAChainInTheModulesOwnSources(@TempDir Path tempDir) throws IOException {
+        webModule(tempDir);
+        writeJava(tempDir, "SecurityConfig.java", """
+                package com.example;
+
+                @Configuration
+                public class SecurityConfig {
+                    @Bean
+                    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                        return http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                                .with(mcpServerOAuth2(), mcp -> mcp.authorizationServer(issuerUrl))
+                                .build();
+                    }
+                }
+                """);
+
+        ProjectContext context = new ProjectContextDetector().detect(tempDir);
+
+        assertTrue(context.httpExposureDetected());
+        assertTrue(context.endpointAuthenticated());
+        assertTrue(context.authenticationEvidence().contains("SecurityConfig.java"),
+                context.authenticationEvidence());
+    }
+
+    @Test
+    void creditsTheBootAutoConfigurationWhenAnIssuerUriIsSet(@TempDir Path tempDir) throws IOException {
+        // spring-ai-community's own sample, and the setup its readme recommends: no Java at all
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project><dependencies>
+                    <dependency><artifactId>spring-ai-starter-mcp-server-webmvc</artifactId></dependency>
+                    <dependency><artifactId>mcp-server-security-spring-boot</artifactId></dependency>
+                </dependencies></project>
+                """);
+        writeProperties(tempDir, "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9000\n");
+
+        ProjectContext context = new ProjectContextDetector().detect(tempDir);
+
+        assertTrue(context.endpointAuthenticated());
+        assertTrue(context.authenticationEvidence().contains("mcp-server-security-spring-boot"),
+                context.authenticationEvidence());
+    }
+
+    @Test
+    void doesNotCreditTheAutoConfigurationWithoutAnIssuerUri(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project><dependencies>
+                    <dependency><artifactId>spring-ai-starter-mcp-server-webmvc</artifactId></dependency>
+                    <dependency><artifactId>mcp-server-security-spring-boot</artifactId></dependency>
+                </dependencies></project>
+                """);
+
+        ProjectContext context = new ProjectContextDetector().detect(tempDir);
+
+        assertFalse(context.endpointAuthenticated(),
+                "the auto-configuration only builds a chain when the issuer URI is set");
+    }
+
+    @Test
+    void letsTheModulesOwnChainOverrideTheAutoConfiguration(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project><dependencies>
+                    <dependency><artifactId>spring-ai-starter-mcp-server-webmvc</artifactId></dependency>
+                    <dependency><artifactId>mcp-server-security-spring-boot</artifactId></dependency>
+                </dependencies></project>
+                """);
+        writeProperties(tempDir, "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9000\n");
+        writeJava(tempDir, "SecurityConfig.java", """
+                package com.example;
+
+                @Configuration
+                public class SecurityConfig {
+                    @Bean
+                    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                        return http.authorizeHttpRequests(auth -> {
+                                    auth.requestMatchers("/mcp").permitAll();
+                                    auth.anyRequest().authenticated();
+                                })
+                                .build();
+                    }
+                }
+                """);
+
+        ProjectContext context = new ProjectContextDetector().detect(tempDir);
+
+        assertFalse(context.endpointAuthenticated(),
+                "declaring a chain switches the auto-configuration off, and this one opens /mcp");
+    }
+
+    @Test
+    void ignoresASecurityChainFromAnotherModule(@TempDir Path tempDir) throws IOException {
+        Path secured = tempDir.resolve("secured-server");
+        Files.createDirectories(secured);
+        webModule(secured);
+        writeJava(secured, "SecurityConfig.java", """
+                package com.example;
+
+                @Configuration
+                public class SecurityConfig {
+                    @Bean
+                    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                        return http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated()).build();
+                    }
+                }
+                """);
+
+        Path open = tempDir.resolve("open-server");
+        Files.createDirectories(open);
+        webModule(open);
+
+        ProjectContextDetector detector = new ProjectContextDetector();
+
+        assertTrue(detector.detect(secured).endpointAuthenticated());
+        assertFalse(detector.detect(open).endpointAuthenticated(),
+                "code is not inherited: a sibling's security configuration protects nothing here");
+    }
+
+    @Test
+    void readsACustomEndpointBeforeJudgingAPermittedPath(@TempDir Path tempDir) throws IOException {
+        webModule(tempDir);
+        writeProperties(tempDir, "spring.ai.mcp.server.streamable-http.mcp-endpoint=/api/ai\n");
+        writeJava(tempDir, "SecurityConfig.java", """
+                package com.example;
+
+                @Configuration
+                public class SecurityConfig {
+                    @Bean
+                    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                        return http.authorizeHttpRequests(auth -> {
+                                    auth.requestMatchers("/api/**").permitAll();
+                                    auth.anyRequest().authenticated();
+                                })
+                                .build();
+                    }
+                }
+                """);
+
+        assertFalse(new ProjectContextDetector().detect(tempDir).endpointAuthenticated(),
+                "the server moved its endpoint under /api, which this chain opens");
+    }
+
+    private void webModule(Path module) throws IOException {
+        Files.writeString(module.resolve("pom.xml"), """
+                <project><dependencies><dependency>
+                    <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+                </dependency></dependencies></project>
+                """);
+    }
+
+    private void writeJava(Path module, String fileName, String content) throws IOException {
+        Path sources = module.resolve("src/main/java/com/example");
+        Files.createDirectories(sources);
+        Files.writeString(sources.resolve(fileName), content);
+    }
+
+    private void writeProperties(Path module, String content) throws IOException {
+        Path resources = module.resolve("src/main/resources");
+        Files.createDirectories(resources);
+        Files.writeString(resources.resolve("application.properties"), content);
+    }
+
+    @Test
     void namesTheModuleItFoundTheEvidenceIn(@TempDir Path tempDir) throws IOException {
         Path module = tempDir.resolve("web-server");
         Files.createDirectories(module);
