@@ -105,7 +105,7 @@ The action downloads the right binary for the runner and runs it:
 ```yaml
 - uses: actions/checkout@v7
 
-- uses: perrinstinct/mcp-sec-audit@v0.1.4
+- uses: perrinstinct/mcp-sec-audit@v0.1.5
   with:
     path: .
     fail-on-critical: true
@@ -124,7 +124,7 @@ The action downloads the right binary for the runner and runs it:
 To surface findings in the Security tab and as inline pull request annotations:
 
 ```yaml
-- uses: perrinstinct/mcp-sec-audit@v0.1.4
+- uses: perrinstinct/mcp-sec-audit@v0.1.5
   with:
     sarif-file: mcp-sec-audit.sarif
 
@@ -147,7 +147,7 @@ which needs a JDK in the job:
 - uses: actions/setup-java@v6
   with: { distribution: temurin, java-version: '21' }
 
-- uses: perrinstinct/mcp-sec-audit@v0.1.4
+- uses: perrinstinct/mcp-sec-audit@v0.1.5
 ```
 
 Without the action, call the binary directly:
