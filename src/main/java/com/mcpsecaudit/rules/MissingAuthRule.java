@@ -30,7 +30,7 @@ public class MissingAuthRule implements SecurityRule {
         }
         return List.of(new Finding(
                 RULE_ID,
-                project.httpExposureDetected() ? Severity.HIGH : Severity.LOW,
+                reachableByAnyone(project) ? Severity.HIGH : Severity.LOW,
                 message(project),
                 toolMethod.filePath(),
                 toolMethod.line(),
@@ -39,10 +39,20 @@ public class MissingAuthRule implements SecurityRule {
         ));
     }
 
+    /** An unprotected tool only matters if an unauthenticated caller can reach it. */
+    private boolean reachableByAnyone(ProjectContext project) {
+        return project.httpExposureDetected() && !project.endpointAuthenticated();
+    }
+
     private String message(ProjectContext project) {
-        if (project.httpExposureDetected()) {
+        if (reachableByAnyone(project)) {
             return "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed, and the project is"
                     + " reachable over HTTP (" + project.evidence() + ")";
+        }
+        if (project.httpExposureDetected()) {
+            return "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed (lowered to LOW: the"
+                    + " MCP endpoint already requires authentication - " + project.authenticationEvidence()
+                    + " - so any authenticated client can call this tool, but nobody else)";
         }
         return "MCP tool method has no @PreAuthorize/@Secured/@RolesAllowed (lowered to LOW: "
                 + project.evidence() + ", so the server is most likely a local stdio process)";

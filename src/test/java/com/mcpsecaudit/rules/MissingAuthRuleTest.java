@@ -79,6 +79,22 @@ class MissingAuthRuleTest {
     }
 
     @Test
+    void lowersToLowWhenTheEndpointItselfRequiresAuthentication(@TempDir Path tempDir) throws IOException {
+        writeUnprotectedTool(tempDir);
+
+        List<Finding> findings = evaluate(tempDir, ProjectContext
+                .httpExposure("spring-ai-starter-mcp-server-webmvc dependency in pom.xml")
+                .authenticatedBy("SecurityFilterChain with mcpServerOAuth2() in SecurityConfig.java"));
+
+        assertEquals(1, findings.size());
+        assertEquals(Severity.LOW, findings.get(0).severity(),
+                "the endpoint rejects anonymous callers, so this is least privilege, not an open door");
+        String message = findings.get(0).message();
+        assertTrue(message.contains("mcpServerOAuth2"), message);
+        assertTrue(message.contains("authenticated client"), "the residual risk must be spelled out: " + message);
+    }
+
+    @Test
     void ruleIdIsMissingAuth() {
         assertEquals("MISSING_AUTH", new MissingAuthRule().ruleId());
     }
