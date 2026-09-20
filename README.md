@@ -194,6 +194,32 @@ With evidence, an unprotected tool is **HIGH**. Without it, the server is most l
 local stdio process where `@PreAuthorize` would not apply anyway, so the finding drops to
 **LOW** and names the module the evidence came from.
 
+### MISSING_AUTH also reads your security configuration
+
+A tool with no `@PreAuthorize` is only wide open if what sits in front of it lets anyone in.
+So the scanner reads the module's own `SecurityFilterChain` beans, and — for a module that
+declares none — falls back to `mcp-server-security-spring-boot`, whose auto-configuration
+builds a chain as soon as an issuer URI is set.
+
+What counts is the access rules, not the authentication mechanism. Spring AI's own
+*secured tools* sample configures OAuth2 **and** leaves the endpoint open, because every
+tool there carries its own `@PreAuthorize`:
+
+```java
+http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())   // /mcp is public
+    .with(mcpServerOAuth2(), ...)                                   // OAuth2 is configured
+```
+
+A scanner that stopped at `mcpServerOAuth2()` would call that protected and hide every
+unannotated tool on it. A chain earns credit only when a catch-all rule demands an identity
+and nothing could let the endpoint through — no `permitAll()` covering it, no second chain
+opening it, no matcher built from a constant this tool cannot read. Whatever is unreadable
+counts against the chain.
+
+When the endpoint does authenticate, the finding drops to **LOW** and names the evidence:
+the tool is reachable by any authenticated client, which is a least-privilege question
+rather than an open door.
+
 ## Adopting it on an existing codebase
 
 Turning the tool on a mature project usually means a wall of findings and a red build on day
@@ -249,6 +275,11 @@ verdict, and the boundaries are worth stating plainly:
   substrings, so a dependency only listed under `dependencyManagement`, or inherited from a
   parent resolved through the repository rather than the directory above, is read the same
   way or missed entirely.
+- **It reads Spring Security, and nothing else that authenticates.** A servlet `Filter`, an
+  interceptor, a gateway in front of the application or a chain declared in another module
+  are all invisible, so tools behind them stay HIGH. Conditional chains are read as text
+  too: when `@Profile` or `@ConditionalOnProperty` can select a chain that opens the
+  endpoint, the scanner assumes it might be the one that runs.
 - **It reasons about one method at a time.** Taint is tracked inside the tool method only.
   A tool that delegates its risky work to a private helper is not followed, and neither is a
   parameter stored in a field and used later.
