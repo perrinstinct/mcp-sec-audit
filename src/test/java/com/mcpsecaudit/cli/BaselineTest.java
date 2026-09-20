@@ -57,6 +57,33 @@ class BaselineTest {
     }
 
     @Test
+    void keepsCoveringAFindingWhoseSeverityDropped(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("baseline.txt");
+        Baseline.of(report(finding("MISSING_AUTH", Severity.HIGH, "Tool.java", 12, "Tool", "run"))).writeTo(file);
+
+        // the endpoint turned out to authenticate: same problem, less risk than recorded
+        assertTrue(Baseline.readFrom(file)
+                        .covers(finding("MISSING_AUTH", Severity.LOW, "Tool.java", 12, "Tool", "run")),
+                "only a rise in risk is new; a drop must stay quiet");
+    }
+
+    @Test
+    void survivesAHandEditedEntry(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("baseline.txt");
+        Files.writeString(file, """
+                this line is not an entry
+                FS_ACCESS|NOT_A_SEVERITY|Doc.java|Doc#read
+                FS_ACCESS|HIGH|Doc.java|Doc#write
+                """);
+
+        Baseline baseline = Baseline.readFrom(file);
+
+        assertTrue(baseline.covers(finding("FS_ACCESS", Severity.HIGH, "Doc.java", 4, "Doc", "write")));
+        assertFalse(baseline.covers(finding("FS_ACCESS", Severity.HIGH, "Doc.java", 4, "Doc", "read")),
+                "an entry nobody can read cannot silence a finding");
+    }
+
+    @Test
     void writesADiffFriendlyFile(@TempDir Path tempDir) throws IOException {
         Path file = tempDir.resolve("baseline.txt");
         Baseline.of(report(

@@ -243,8 +243,10 @@ FS_ACCESS|HIGH|src/main/java/com/example/DocumentProvider.java|DocumentProvider#
 ```
 
 Line numbers are deliberately absent — an edit above a finding would otherwise invalidate
-the whole file. Severity is part of the entry, so a finding escalating from MEDIUM to HIGH,
-meaning a tool parameter now reaches the sink, resurfaces despite the baseline.
+the whole file. Severity is recorded, so a finding escalating from MEDIUM to HIGH, meaning a
+tool parameter now reaches the sink, resurfaces despite the baseline. A finding that drops
+in severity stays quiet: it is the same known problem, judged less severe than when it was
+recorded.
 
 ## Suppressing findings
 
