@@ -1,0 +1,31 @@
+name: Self scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build the scanner
+        run: mvn -B -DskipTests package
+
+      - name: Scan this repository with itself
+        run: java -jar target/*-all.jar . --sarif mcp-sec-audit.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: mcp-sec-audit.sarif
